@@ -1,11 +1,10 @@
-import { useEffect, useState, useCallback } from 'react';
+﻿import { useEffect, useState, useCallback } from 'react';
 import {
   View,
   Text,
   FlatList,
   TouchableOpacity,
   Modal,
-  StyleSheet,
   RefreshControl,
   ActivityIndicator,
 } from 'react-native';
@@ -14,8 +13,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { getHazardLogs } from '@/lib/local-db';
 import { HAZARD_COLORS } from '@/constants/hazards';
-import { Spacing, Radius } from '@/constants/theme';
 import type { LocalHazardLog } from '@/types';
+import { styles } from '@/styles/hazard-logs.style';
 
 export default function HazardLogsScreen() {
   const background = useThemeColor({}, 'background');
@@ -75,7 +74,7 @@ export default function HazardLogsScreen() {
         <View style={styles.rowContent}>
           <Text style={[styles.rowType, { color: text }]} numberOfLines={1}>{item.type}</Text>
           <Text style={[styles.rowMeta, { color: textSecondary }]}>
-            {formatDate(item.detected_at)} · {formatTime(item.detected_at)}
+            {formatDate(item.detected_at)} Â· {formatTime(item.detected_at)}
           </Text>
           {item.area && (
             <Text style={[styles.rowArea, { color: textSecondary }]} numberOfLines={1}>
@@ -232,78 +231,3 @@ function DetailRow({
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1 },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.md,
-    borderBottomWidth: 1,
-  },
-  headerTitle: { fontSize: 20, fontWeight: '700' },
-  headerCount: { fontSize: 13 },
-  listContent: { padding: Spacing.md, paddingBottom: 100 },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: Radius.lg,
-    padding: Spacing.md,
-    borderWidth: 1,
-    gap: 12,
-    minHeight: 44,
-  },
-  typeIndicator: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  typeDot: { width: 12, height: 12, borderRadius: 6 },
-  rowContent: { flex: 1, gap: 2 },
-  rowType: { fontSize: 14, fontWeight: '600' },
-  rowMeta: { fontSize: 12 },
-  rowArea: { fontSize: 12 },
-  rowRight: { alignItems: 'flex-end', gap: 2 },
-  confidence: { fontSize: 13, fontWeight: '700' },
-  distance: { fontSize: 11 },
-  empty: {
-    borderRadius: Radius.xl,
-    padding: Spacing.xxl,
-    alignItems: 'center',
-    gap: Spacing.sm,
-    marginTop: Spacing.lg,
-  },
-  emptyTitle: { fontSize: 16, fontWeight: '700' },
-  emptySubtitle: { fontSize: 13, textAlign: 'center', lineHeight: 20 },
-  modalBackdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)' },
-  modalSheet: {
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: Spacing.lg,
-    paddingBottom: 40,
-  },
-  modalHandle: {
-    width: 40,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: '#D1D5DB',
-    alignSelf: 'center',
-    marginBottom: Spacing.md,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: Spacing.md,
-  },
-  modalTitle: { fontSize: 18, fontWeight: '700' },
-  closeBtn: { padding: 4, minHeight: 44, minWidth: 44, alignItems: 'center', justifyContent: 'center' },
-  detailGrid: { gap: 14 },
-  detailRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  detailLabel: { fontSize: 13, width: 90 },
-  detailValue: { fontSize: 13, fontWeight: '600', flex: 1 },
-});

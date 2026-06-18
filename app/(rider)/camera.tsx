@@ -1,11 +1,10 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+﻿import { useEffect, useRef, useState, useCallback } from 'react';
 import {
   View,
   Text,
   TouchableOpacity,
   StyleSheet,
   useWindowDimensions,
-  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -22,6 +21,7 @@ import { resolveArea } from '@/lib/area-resolver';
 import { HAZARD_COLORS, HAZARD_WARNINGS } from '@/constants/hazards';
 import type { DetectionResult } from '@/types';
 import roadSigns from '@/assets/data/road_sign_instructions.json';
+import { styles } from '@/styles/camera.style';
 
 type SourceMode = 'native' | 'otg';
 
@@ -79,7 +79,7 @@ export default function CameraScreen() {
             if (trip?.id) await incrementTripHazards(trip.id);
           }
         } catch {
-          // Location unavailable — still log without coords
+          // Location unavailable â€” still log without coords
         }
       }
 
@@ -102,15 +102,15 @@ export default function CameraScreen() {
     }
 
     if (results.length === 0) {
-      // Don't clear immediately — let warning banner fade out naturally
+      // Don't clear immediately â€” let warning banner fade out naturally
     }
   }, [trip]);
 
   const handleStartRide = useCallback(async () => {
     toast.promise(startTrip(), {
       loading: 'Starting ride...',
-      success: 'Ride started — stay safe!',
-      error: 'Could not start ride. Check your connection.',
+      success: () => 'Ride started â€” stay safe!',
+      error: () => 'Could not start ride. Check your connection.',
     });
   }, [startTrip]);
 
@@ -146,7 +146,7 @@ export default function CameraScreen() {
         </View>
       )}
 
-      {/* AR Overlay — bounding boxes */}
+      {/* AR Overlay â€” bounding boxes */}
       <View style={StyleSheet.absoluteFill} pointerEvents="none">
         {detections.map((d, i) => {
           const left = d.bbox.x * screenWidth;
@@ -244,7 +244,7 @@ function getBoxColor(d: DetectionResult): string {
 }
 
 function getBadgeLabel(d: DetectionResult): string {
-  if (d.distance !== undefined) return `${d.type} • ${d.distance}m`;
+  if (d.distance !== undefined) return `${d.type} â€¢ ${d.distance}m`;
   if (d.trafficState) return d.type;
   if (d.signKey) {
     const sign = (roadSigns as Record<string, { name: string }>)[d.signKey];
@@ -253,145 +253,3 @@ function getBadgeLabel(d: DetectionResult): string {
   return d.type;
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#000' },
-  topOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    paddingHorizontal: 16,
-    paddingTop: Platform.OS === 'android' ? 8 : 0,
-  },
-  sourceToggle: {
-    flexDirection: 'row',
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    borderRadius: 20,
-    padding: 3,
-    gap: 2,
-  },
-  toggleBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 16,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    gap: 4,
-  },
-  toggleBtnActive: { backgroundColor: '#0274DF' },
-  toggleText: { fontSize: 12, color: '#9CA3AF' },
-  toggleTextActive: { color: '#fff', fontWeight: '600' },
-  sosBtn: {
-    backgroundColor: '#EF4444',
-    borderRadius: 40,
-    width: 56,
-    height: 56,
-    justifyContent: 'center',
-    alignItems: 'center',
-    elevation: 4,
-    shadowColor: '#EF4444',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.5,
-    shadowRadius: 4,
-  },
-  sosBtnText: { color: '#fff', fontWeight: '800', fontSize: 14, letterSpacing: 0.5 },
-  boundingBox: {
-    position: 'absolute',
-    borderWidth: 2,
-    borderRadius: 4,
-  },
-  labelBadge: {
-    position: 'absolute',
-    top: -22,
-    left: 0,
-    borderRadius: 4,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    maxWidth: 160,
-  },
-  labelText: { color: '#fff', fontSize: 11, fontWeight: '700' },
-  warningBanner: {
-    position: 'absolute',
-    bottom: 100,
-    left: 16,
-    right: 16,
-    backgroundColor: 'rgba(239,68,68,0.92)',
-    borderRadius: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    gap: 8,
-  },
-  warningText: { color: '#fff', fontSize: 14, fontWeight: '600', flex: 1 },
-  demoBadge: {
-    position: 'absolute',
-    bottom: 160,
-    alignSelf: 'center',
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    borderRadius: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-  },
-  demoBadgeText: { color: '#F59E0B', fontSize: 10, fontWeight: '700', letterSpacing: 1 },
-  otgPlaceholder: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#0F172A',
-    gap: 12,
-  },
-  otgText: { color: '#E5E7EB', fontSize: 16, fontWeight: '600' },
-  otgSubtext: { color: '#9CA3AF', fontSize: 13 },
-  permissionContainer: {
-    flex: 1,
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 32,
-    gap: 16,
-  },
-  permissionTitle: { fontSize: 20, fontWeight: '700', color: '#111827' },
-  permissionText: { fontSize: 15, color: '#6B7280', textAlign: 'center', lineHeight: 22 },
-  permissionBtn: {
-    borderRadius: 8,
-    minHeight: 44,
-    paddingHorizontal: 32,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  permissionBtnText: { color: '#fff', fontWeight: '600', fontSize: 16 },
-  startRideOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.65)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 24,
-  },
-  startRideCard: {
-    backgroundColor: '#fff',
-    borderRadius: 20,
-    padding: 28,
-    alignItems: 'center',
-    width: '100%',
-    maxWidth: 320,
-  },
-  startRideTitle: { fontSize: 18, fontWeight: '700', color: '#111827', marginBottom: 6 },
-  startRideSubtitle: {
-    fontSize: 14,
-    color: '#6B7280',
-    textAlign: 'center',
-    lineHeight: 20,
-    marginBottom: 20,
-  },
-  startRideBtn: {
-    borderRadius: 10,
-    height: 48,
-    width: '100%',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  startRideBtnText: { color: '#fff', fontWeight: '700', fontSize: 16 },
-});

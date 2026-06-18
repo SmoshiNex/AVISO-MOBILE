@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+﻿import { useEffect, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -6,6 +6,7 @@ import {
   StyleSheet,
   ActivityIndicator,
 } from 'react-native';
+
 import { SafeAreaView } from 'react-native-safe-area-context';
 import MapView, { Marker, Polyline, PROVIDER_DEFAULT } from 'react-native-maps';
 import { useLocalSearchParams } from 'expo-router';
@@ -15,8 +16,8 @@ import { useThemeColor } from '@/hooks/use-theme-color';
 import { useTrip } from '@/hooks/use-trip';
 import { getTripById, getHazardLogsForTrip } from '@/lib/local-db';
 import { HAZARD_COLORS } from '@/constants/hazards';
-import { Spacing, Radius } from '@/constants/theme';
 import type { LocalTrip, LocalHazardLog } from '@/types';
+import { styles } from '@/styles/map.style';
 
 // Zamboanga City center
 const ZAMBOANGA_REGION = {
@@ -61,16 +62,16 @@ export default function MapScreen() {
   const handleStartRide = useCallback(async () => {
     toast.promise(startTrip(), {
       loading: 'Starting ride...',
-      success: 'Ride started — drive safe!',
-      error: 'Could not start. Check your connection.',
+      success: () => 'Ride started — drive safe!',
+      error: () => 'Could not start. Check your connection.',
     });
   }, [startTrip]);
 
   const handleEndRide = useCallback(async () => {
     toast.promise(endTrip(), {
       loading: 'Ending ride...',
-      success: 'Ride ended and saved!',
-      error: 'Could not end ride.',
+      success: () => 'Ride ended and saved!',
+      error: () => 'Could not end ride.',
     });
   }, [endTrip]);
 
@@ -254,50 +255,3 @@ export default function MapScreen() {
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1 },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  emptyText: { fontSize: 16 },
-  historyCardWrapper: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    paddingHorizontal: Spacing.md,
-    paddingTop: Spacing.sm,
-  },
-  historyCard: {
-    borderRadius: Radius.lg,
-    padding: Spacing.md,
-    borderWidth: 1,
-    gap: 6,
-  },
-  historyTitle: { fontSize: 15, fontWeight: '700' },
-  historyMeta: { flexDirection: 'row', gap: Spacing.md },
-  metaItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  metaText: { fontSize: 13 },
-  rideControls: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-    paddingHorizontal: Spacing.md,
-    paddingBottom: 90,
-  },
-  rideBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: Radius.pill,
-    height: 52,
-    paddingHorizontal: 32,
-    elevation: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-  },
-  rideBtnText: { color: '#fff', fontWeight: '700', fontSize: 16 },
-});

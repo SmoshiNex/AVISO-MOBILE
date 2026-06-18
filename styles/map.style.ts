@@ -1,0 +1,49 @@
+import { StyleSheet } from 'react-native';
+import { Spacing, Radius } from '@/constants/theme';
+
+export const styles = StyleSheet.create({
+  container: { flex: 1 },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  emptyText: { fontSize: 16 },
+  historyCardWrapper: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    paddingHorizontal: Spacing.md,
+    paddingTop: Spacing.sm,
+  },
+  historyCard: {
+    borderRadius: Radius.lg,
+    padding: Spacing.md,
+    borderWidth: 1,
+    gap: 6,
+  },
+  historyTitle: { fontSize: 15, fontWeight: '700' },
+  historyMeta: { flexDirection: 'row', gap: Spacing.md },
+  metaItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  metaText: { fontSize: 13 },
+  rideControls: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    paddingHorizontal: Spacing.md,
+    paddingBottom: 90,
+  },
+  rideBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: Radius.pill,
+    height: 52,
+    paddingHorizontal: 32,
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+  },
+  rideBtnText: { color: '#fff', fontWeight: '700', fontSize: 16 },
+});

@@ -1,8 +1,7 @@
-import { useRef } from 'react';
+﻿import { useRef } from 'react';
 import {
   View,
   TouchableOpacity,
-  StyleSheet,
   Animated,
   Platform,
 } from 'react-native';
@@ -12,7 +11,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useCrashDetection } from '@/hooks/use-crash-detection';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { Colors, Radius } from '@/constants/theme';
+import { Colors } from '@/constants/theme';
+import { styles } from '@/styles/rider-layout.style';
 
 type Tab = {
   name: string;
@@ -112,7 +112,7 @@ export default function RiderLayout() {
       <Tabs.Screen name="camera" />
       <Tabs.Screen name="map" />
       <Tabs.Screen name="profile" />
-      {/* Non-tab screens — hidden from bar */}
+      {/* Non-tab screens â€” hidden from bar */}
       <Tabs.Screen name="hazard-logs"          options={{ href: null }} />
       <Tabs.Screen name="emergency-alert"      options={{ href: null }} />
       <Tabs.Screen name="emergency-contacts"   options={{ href: null }} />
@@ -121,30 +121,3 @@ export default function RiderLayout() {
   );
 }
 
-const styles = StyleSheet.create({
-  tabBarWrapper: {
-    position: 'absolute',
-    left: 24,
-    right: 24,
-    alignItems: 'center',
-    pointerEvents: 'box-none',
-  },
-  tabBar: {
-    flexDirection: 'row',
-    borderRadius: Radius.pill,
-    padding: 6,
-    gap: 4,
-    elevation: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.12,
-    shadowRadius: 12,
-  },
-  tabItem: {
-    width: 52,
-    height: 44,
-    borderRadius: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-});
