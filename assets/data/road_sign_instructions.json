@@ -1,0 +1,13 @@
+{
+  "0": { "name": "Stop Sign", "instruction": "Come to a full stop before proceeding" },
+  "1": { "name": "No Entry", "instruction": "Do not enter this road" },
+  "2": { "name": "Speed Limit 60", "instruction": "Maximum speed is 60 kilometers per hour" },
+  "3": { "name": "Speed Limit 40", "instruction": "Maximum speed is 40 kilometers per hour" },
+  "4": { "name": "No Overtaking", "instruction": "Do not overtake other vehicles" },
+  "5": { "name": "Give Way", "instruction": "Yield to oncoming traffic" },
+  "6": { "name": "No U-Turn", "instruction": "U-turn is not allowed here" },
+  "7": { "name": "No Left Turn", "instruction": "Left turn is not allowed here" },
+  "8": { "name": "No Right Turn", "instruction": "Right turn is not allowed here" },
+  "9": { "name": "Pedestrian Crossing", "instruction": "Watch for pedestrians crossing ahead" },
+  "10": { "name": "School Zone", "instruction": "School zone ahead, reduce speed and watch for children" }
+}

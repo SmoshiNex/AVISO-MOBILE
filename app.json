@@ -9,9 +9,23 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSCameraUsageDescription": "AVISO uses the camera to detect road hazards.",
+        "NSLocationWhenInUseUsageDescription": "AVISO tracks your location during trips.",
+        "NSContactsUsageDescription": "Select emergency contacts from your contacts list.",
+        "NSMicrophoneUsageDescription": "Required by the camera."
+      }
     },
     "android": {
+      "package": "com.nexsmoshi.avisomobile",
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "CAMERA",
+        "READ_CONTACTS",
+        "SEND_SMS"
+      ],
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -38,7 +52,10 @@
             "backgroundColor": "#000000"
           }
         }
-      ]
+      ],
+      "expo-secure-store",
+      ["expo-camera", { "cameraPermission": "AVISO uses the camera to detect road hazards." }],
+      ["expo-location", { "locationAlwaysAndWhenInUsePermission": "AVISO tracks your location during trips." }]
     ],
     "experiments": {
       "typedRoutes": true,
