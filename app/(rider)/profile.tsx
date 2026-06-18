@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Alert } from 'react-native';
+﻿import { useEffect, useState } from 'react';
+import { View, Text, TouchableOpacity, ScrollView, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
@@ -7,8 +7,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { toast } from 'sonner-native';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { api } from '@/lib/api-client';
-import { Spacing, Radius } from '@/constants/theme';
 import type { User } from '@/types';
+import { styles } from '@/styles/profile.style';
 
 type NavRow = {
   icon: string;
@@ -95,7 +95,7 @@ export default function ProfileScreen() {
             <Text style={styles.avatarText}>{initials}</Text>
           </View>
           <Text style={[styles.fullName, { color: text }]}>
-            {user ? `${user.first_name} ${user.last_name}` : '—'}
+            {user ? `${user.first_name} ${user.last_name}` : 'â€”'}
           </Text>
           {user?.username && (
             <Text style={[styles.username, { color: textSecondary }]}>@{user.username}</Text>
@@ -167,57 +167,9 @@ function InfoRow({
       <Ionicons name={icon as any} size={16} color={labelColor} />
       <View style={styles.infoContent}>
         <Text style={[styles.infoLabel, { color: labelColor }]}>{label}</Text>
-        <Text style={[styles.infoValue, { color: textColor }]}>{value ?? '—'}</Text>
+        <Text style={[styles.infoValue, { color: textColor }]}>{value ?? 'â€”'}</Text>
       </View>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1 },
-  scrollContent: { paddingHorizontal: Spacing.md, paddingTop: Spacing.md },
-  headerTitle: { fontSize: 24, fontWeight: '800', marginBottom: Spacing.lg },
-  avatarSection: { alignItems: 'center', marginBottom: Spacing.lg, gap: 8 },
-  avatarCircle: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 4,
-  },
-  avatarText: { color: '#fff', fontSize: 28, fontWeight: '800' },
-  fullName: { fontSize: 20, fontWeight: '700' },
-  username: { fontSize: 14 },
-  infoCard: {
-    borderRadius: Radius.lg,
-    borderWidth: 1,
-    padding: Spacing.md,
-    marginBottom: Spacing.md,
-    gap: 0,
-  },
-  infoRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 12,
-    paddingVertical: 10,
-  },
-  infoContent: { flex: 1, gap: 2 },
-  infoLabel: { fontSize: 12, fontWeight: '600' },
-  infoValue: { fontSize: 14 },
-  divider: { height: 1, marginHorizontal: -Spacing.md },
-  navCard: {
-    borderRadius: Radius.lg,
-    borderWidth: 1,
-    overflow: 'hidden',
-    marginBottom: Spacing.md,
-  },
-  navRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: Spacing.md,
-    gap: 12,
-    minHeight: 52,
-  },
-  navLabel: { flex: 1, fontSize: 15, fontWeight: '500' },
-});

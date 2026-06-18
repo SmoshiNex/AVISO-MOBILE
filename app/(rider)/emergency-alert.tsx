@@ -1,11 +1,12 @@
-import { useEffect, useRef, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Animated } from 'react-native';
+﻿import { useEffect, useRef, useState } from 'react';
+import { View, Text, TouchableOpacity, Animated } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import * as Location from 'expo-location';
 import { Ionicons } from '@expo/vector-icons';
 import { toast } from 'sonner-native';
 import { sendEmergencyAlert } from '@/lib/emergency-sos';
+import { styles } from '@/styles/emergency-alert.style';
 
 const COUNTDOWN_SECONDS = 15;
 
@@ -64,7 +65,7 @@ export default function EmergencyAlertScreen() {
 
       setSent(true);
     } catch {
-      toast.error('Could not send alert — SMS may have been sent directly');
+      toast.error('Could not send alert â€” SMS may have been sent directly');
       setSent(true);
     } finally {
       setSending(false);
@@ -134,7 +135,7 @@ export default function EmergencyAlertScreen() {
             activeOpacity={0.85}
           >
             <Ionicons name="close-circle-outline" size={20} color="#EF4444" style={{ marginRight: 8 }} />
-            <Text style={styles.cancelBtnText}>I'm OK — Cancel</Text>
+            <Text style={styles.cancelBtnText}>I'm OK â€” Cancel</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -152,149 +153,3 @@ export default function EmergencyAlertScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#EF4444',
-  },
-  inner: {
-    flex: 1,
-    alignItems: 'center',
-    paddingHorizontal: 24,
-    paddingTop: 24,
-    paddingBottom: 32,
-    gap: 24,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  headerTitle: {
-    color: '#fff',
-    fontSize: 20,
-    fontWeight: '800',
-    letterSpacing: 1,
-  },
-  countdownWrapper: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  countdownRing: {
-    width: 200,
-    height: 200,
-    borderRadius: 100,
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  countdownCircle: {
-    width: 160,
-    height: 160,
-    borderRadius: 80,
-    backgroundColor: 'rgba(255,255,255,0.25)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  countdownNumber: {
-    color: '#fff',
-    fontSize: 72,
-    fontWeight: '800',
-    lineHeight: 76,
-  },
-  countdownLabel: {
-    color: 'rgba(255,255,255,0.8)',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  messageText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-    textAlign: 'center',
-    lineHeight: 24,
-  },
-  messageSubtext: {
-    color: 'rgba(255,255,255,0.8)',
-    fontSize: 13,
-    textAlign: 'center',
-    lineHeight: 20,
-  },
-  actions: {
-    width: '100%',
-    gap: 12,
-  },
-  cancelBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#fff',
-    borderRadius: 14,
-    height: 52,
-    width: '100%',
-  },
-  cancelBtnText: {
-    color: '#EF4444',
-    fontWeight: '700',
-    fontSize: 16,
-  },
-  sendNowBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    borderWidth: 2,
-    borderColor: '#fff',
-    borderRadius: 14,
-    height: 52,
-    width: '100%',
-  },
-  sendNowText: {
-    color: '#fff',
-    fontWeight: '700',
-    fontSize: 16,
-  },
-  // Sent state
-  sentContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 32,
-    gap: 20,
-  },
-  sentIcon: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  sentTitle: {
-    color: '#fff',
-    fontSize: 24,
-    fontWeight: '800',
-    textAlign: 'center',
-  },
-  sentSubtitle: {
-    color: 'rgba(255,255,255,0.85)',
-    fontSize: 15,
-    textAlign: 'center',
-    lineHeight: 22,
-  },
-  closeBtn: {
-    backgroundColor: '#fff',
-    borderRadius: 14,
-    height: 52,
-    paddingHorizontal: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 8,
-  },
-  closeBtnText: {
-    color: '#EF4444',
-    fontWeight: '700',
-    fontSize: 16,
-  },
-});

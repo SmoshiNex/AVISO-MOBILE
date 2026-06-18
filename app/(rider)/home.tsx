@@ -1,10 +1,9 @@
-import { useEffect, useState, useCallback } from 'react';
+﻿import { useEffect, useState, useCallback } from 'react';
 import {
   View,
   Text,
   TouchableOpacity,
   ScrollView,
-  StyleSheet,
   RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -13,9 +12,10 @@ import * as SecureStore from 'expo-secure-store';
 import { Ionicons } from '@expo/vector-icons';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { getDashboardStats, getContactCount } from '@/lib/local-db';
-import { Colors, Spacing, Radius } from '@/constants/theme';
+import { Colors } from '@/constants/theme';
 import { HAZARD_COLORS } from '@/constants/hazards';
 import type { LocalTrip, LocalHazardLog } from '@/types';
+import { styles } from '@/styles/home.style';
 
 type DashboardData = {
   riderName: string;
@@ -111,7 +111,7 @@ export default function HomeScreen() {
         <View style={styles.header}>
           <View>
             <Text style={[styles.greeting, { color: textSecondary }]}>
-              {greeting()}, {data?.riderName ?? '—'}
+              {greeting()}, {data?.riderName ?? 'â€”'}
             </Text>
             <Text style={[styles.date, { color: text }]}>{formatDate()}</Text>
           </View>
@@ -143,7 +143,7 @@ export default function HomeScreen() {
               styles.statusValue,
               { color: data && data.contactCount > 0 ? success : warning }
             ]}>
-              {data ? `${data.contactCount} set` : '—'}
+              {data ? `${data.contactCount} set` : 'â€”'}
             </Text>
           </View>
         </View>
@@ -162,13 +162,13 @@ export default function HomeScreen() {
         <View style={styles.statsGrid}>
           <View style={[styles.statCard, { backgroundColor: backgroundElement, borderColor: border }]}>
             <Text style={[styles.statValue, { color: primary }]}>
-              {data?.totalTrips ?? '—'}
+              {data?.totalTrips ?? 'â€”'}
             </Text>
             <Text style={[styles.statLabel, { color: textSecondary }]}>Total Trips</Text>
           </View>
           <View style={[styles.statCard, { backgroundColor: backgroundElement, borderColor: border }]}>
             <Text style={[styles.statValue, { color: primary }]}>
-              {data?.totalDetections ?? '—'}
+              {data?.totalDetections ?? 'â€”'}
             </Text>
             <Text style={[styles.statLabel, { color: textSecondary }]}>Total Detections</Text>
           </View>
@@ -181,7 +181,7 @@ export default function HomeScreen() {
               <Text style={[styles.cardTitle, { color: textSecondary }]}>LAST TRIP</Text>
               <Text style={[styles.tripMeta, { color: textSecondary }]}>
                 {formatTripDate(data.lastTrip.started_at)}
-                {data.lastTrip.ended_at ? ` • ${formatDuration(data.lastTrip)}` : ''}
+                {data.lastTrip.ended_at ? ` â€¢ ${formatDuration(data.lastTrip)}` : ''}
               </Text>
             </View>
 
@@ -245,96 +245,3 @@ export default function HomeScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1 },
-  scrollContent: { paddingHorizontal: Spacing.md, paddingTop: Spacing.md },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: Spacing.lg,
-  },
-  greeting: { fontSize: 14, marginBottom: 2 },
-  date: { fontSize: 20, fontWeight: '700' },
-  avatarCircle: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarText: { color: '#fff', fontSize: 18, fontWeight: '700' },
-  card: {
-    borderRadius: Radius.lg,
-    padding: Spacing.md,
-    borderWidth: 1,
-    marginBottom: Spacing.md,
-  },
-  cardTitle: { fontSize: 11, fontWeight: '700', letterSpacing: 0.8, marginBottom: Spacing.sm },
-  statusRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 6,
-    gap: 8,
-  },
-  statusLabel: { flex: 1, fontSize: 14 },
-  statusValue: { fontSize: 13, fontWeight: '600' },
-  startButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: Radius.md,
-    height: 52,
-    marginBottom: Spacing.md,
-  },
-  startButtonText: { color: '#fff', fontSize: 16, fontWeight: '700' },
-  statsGrid: {
-    flexDirection: 'row',
-    gap: Spacing.sm,
-    marginBottom: Spacing.md,
-  },
-  statCard: {
-    flex: 1,
-    borderRadius: Radius.lg,
-    padding: Spacing.md,
-    borderWidth: 1,
-    alignItems: 'center',
-  },
-  statValue: { fontSize: 28, fontWeight: '800', marginBottom: 2 },
-  statLabel: { fontSize: 12, fontWeight: '500' },
-  lastTripHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: Spacing.sm,
-  },
-  tripMeta: { fontSize: 12 },
-  detectionPills: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: Spacing.sm },
-  pill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 20,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    gap: 5,
-  },
-  pillDot: { width: 6, height: 6, borderRadius: 3 },
-  pillText: { fontSize: 12, fontWeight: '600' },
-  noDetections: { fontSize: 13, marginBottom: Spacing.sm },
-  viewHistoryRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 2,
-    gap: 2,
-  },
-  viewHistoryText: { fontSize: 13, fontWeight: '600' },
-  emptyCard: {
-    borderRadius: Radius.lg,
-    padding: Spacing.xl,
-    borderWidth: 1,
-    alignItems: 'center',
-    gap: Spacing.sm,
-  },
-  emptyTitle: { fontSize: 16, fontWeight: '700' },
-  emptySubtitle: { fontSize: 13, textAlign: 'center', lineHeight: 20 },
-});
