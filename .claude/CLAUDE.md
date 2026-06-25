@@ -1,14 +1,14 @@
 # AVISO Mobile — Claude Coding Guide
 
-## MANDATORY: Read These Files Before Every Task
+## MANDATORY: Invoke These Skills Before Every Task
 
-At the start of every session and before doing any work, use the Read tool to read ALL of the following files:
+At the start of every session and before doing any work, use the Skill tool to invoke ALL of the following skills:
 
-1. **Architecture** → `.claude/skills/aviso-mobile-architecture/ARCHITECTURE.md`
-2. **Security** → `.claude/skills/aviso-security/SECURITY.md`
-3. **React Best Practices** → `.claude/skills/react-best-practices/REACT-BEST-PRACTICES.md`
-4. **Composition Patterns** → `.claude/skills/composition-patterns/COMPOSITION-PATTERNS.md`
-5. **Mobile Design Guidelines** → `.claude/skills/mobile-design-guidelines/MOBILE-DESIGN-GUIDELINES.md`
+1. **Architecture** → `Skill("aviso-mobile-architecture")`
+2. **Security** → `Skill("aviso-security")`
+3. **React Best Practices** → `Skill("react-best-practices")`
+4. **Composition Patterns** → `Skill("composition-patterns")`
+5. **Mobile Design Guidelines** → `Skill("mobile-design-guidelines")`
 
 ---
 

@@ -12,6 +12,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { getHazardLogs } from '@/lib/local-db';
+import { pullFromBackend } from '@/lib/sync-service';
 import { HAZARD_COLORS } from '@/constants/hazards';
 import type { LocalHazardLog } from '@/types';
 import { styles } from '@/styles/hazard-logs.style';
@@ -41,6 +42,7 @@ export default function HazardLogsScreen() {
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
+    await pullFromBackend(true);
     await loadLogs();
     setRefreshing(false);
   }, [loadLogs]);
@@ -74,7 +76,7 @@ export default function HazardLogsScreen() {
         <View style={styles.rowContent}>
           <Text style={[styles.rowType, { color: text }]} numberOfLines={1}>{item.type}</Text>
           <Text style={[styles.rowMeta, { color: textSecondary }]}>
-            {formatDate(item.detected_at)} Â· {formatTime(item.detected_at)}
+            {formatDate(item.detected_at)} · {formatTime(item.detected_at)}
           </Text>
           {item.area && (
             <Text style={[styles.rowArea, { color: textSecondary }]} numberOfLines={1}>

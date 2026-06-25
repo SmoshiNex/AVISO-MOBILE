@@ -5,12 +5,22 @@ export type User = {
   first_name: string;
   middle_name?: string;
   last_name: string;
-  username: string;
+  username?: string;
   email: string;
   contact_number: string;
   address?: string;
+  street?: string | null;
+  barangay_id?: string | null;
+  city_id?: string | null;
+  province_id?: string | null;
+  region_id?: string | null;
+  avatar_url?: string;
   role: string;
 };
+
+export type AddressProvince = { province_id: string; name: string; region_id: string };
+export type AddressCity     = { city_id: string; name: string };
+export type AddressBarangay = { code: string; name: string };
 
 export type Trip = {
   id: number;

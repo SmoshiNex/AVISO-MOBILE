@@ -3,11 +3,7 @@ import type { LocalTrip, LocalHazardLog, LocalCrashEvent, LocalEmergencyContact 
 
 let db: SQLite.SQLiteDatabase | null = null;
 
-export async function initDb(): Promise<void> {
-  db = await SQLite.openDatabaseAsync('aviso.db');
-  await db.execAsync(`
-    PRAGMA journal_mode = WAL;
-
+const SCHEMA = `
     CREATE TABLE IF NOT EXISTS trips (
       id            INTEGER PRIMARY KEY AUTOINCREMENT,
       remote_id     INTEGER,
@@ -57,7 +53,33 @@ export async function initDb(): Promise<void> {
       contact_number TEXT NOT NULL,
       is_active      INTEGER DEFAULT 1
     );
-  `);
+`;
+
+async function openAndCreate(): Promise<SQLite.SQLiteDatabase> {
+  const handle = await SQLite.openDatabaseAsync('aviso.db');
+  // Run WAL separately from DDL — a result-returning PRAGMA batched with
+  // CREATE statements can fault the native layer on some Android builds.
+  await handle.execAsync('PRAGMA journal_mode = WAL');
+  await handle.execAsync(SCHEMA);
+  return handle;
+}
+
+export async function initDb(): Promise<void> {
+  if (db) return; // idempotent — guard against re-init on Fast Refresh
+  try {
+    db = await openAndCreate();
+  } catch (err) {
+    // The local DB is a cache (data re-syncs from the backend). If it is
+    // corrupted or locked from a prior crash, reset it and recreate once.
+    console.warn('[local-db] init failed, resetting database:', err);
+    try {
+      if (db) await db.closeAsync().catch(() => {});
+      await SQLite.deleteDatabaseAsync('aviso.db');
+    } catch {
+      // ignore — deletion may fail if the file never existed
+    }
+    db = await openAndCreate();
+  }
 }
 
 function getDb(): SQLite.SQLiteDatabase {

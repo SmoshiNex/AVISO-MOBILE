@@ -12,6 +12,7 @@ import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { getTrips } from '@/lib/local-db';
+import { pullFromBackend } from '@/lib/sync-service';
 import type { LocalTrip } from '@/types';
 import { styles } from '@/styles/trip-history.style';
 
@@ -40,6 +41,7 @@ export default function TripHistoryScreen() {
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
+    await pullFromBackend(true);
     await loadTrips();
     setRefreshing(false);
   }, [loadTrips]);
@@ -87,7 +89,7 @@ export default function TripHistoryScreen() {
           <Text style={[styles.tripDate, { color: text }]}>{formatDate(item.started_at)}</Text>
           <Text style={[styles.tripTime, { color: textSecondary }]}>
             {formatTime(item.started_at)}
-            {item.ended_at ? ` â€” ${formatTime(item.ended_at)}` : ''}
+            {item.ended_at ? ` — ${formatTime(item.ended_at)}` : ''}
           </Text>
         </View>
         <Ionicons name="chevron-forward" size={18} color={textSecondary} />

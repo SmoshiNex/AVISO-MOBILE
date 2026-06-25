@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import * as Location from 'expo-location';
 import { api } from '@/lib/api-client';
@@ -12,24 +13,38 @@ import type { LocalTrip } from '@/types';
 
 const LOCATION_INTERVAL_MS = 3000;
 
+// Captures when this JS module first loaded (= current app session start).
+// Trips started before this moment survived a crash — don't auto-resume them.
+const SESSION_START = Date.now();
+
 export function useTrip() {
   const [trip, setTrip] = useState<LocalTrip | null>(null);
   const [isActive, setIsActive] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const routePointsRef = useRef<Array<{ lat: number; lng: number }>>([]);
 
-  // Resume any in-progress trip on mount
+  // Resume any in-progress trip on mount — but only if it started in this session.
+  // Trips from a previous crashed session are skipped to prevent auto-start on tab switch.
   useEffect(() => {
     getActiveTrip().then((active) => {
-      if (active) {
-        setTrip(active);
-        setIsActive(true);
-        routePointsRef.current = active.route_points ?? [];
-      }
+      if (!active) return;
+      const startedAt = new Date(active.started_at).getTime();
+      if (startedAt < SESSION_START) return; // stale crash survivor — ignore
+      setTrip(active);
+      setIsActive(true);
+      routePointsRef.current = active.route_points ?? [];
     });
   }, []);
 
   const startTrip = useCallback(async () => {
+    const { status } = await Location.requestForegroundPermissionsAsync();
+    if (status !== 'granted') {
+      throw new Error('Location permission is required. Please enable it in Settings.');
+    }
+    if (Platform.OS === 'android') {
+      await Location.enableNetworkProviderAsync().catch(() => {});
+    }
+
     const riderCode = await SecureStore.getItemAsync('rider_code') ?? '';
     const location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
     const { latitude, longitude } = location.coords;
@@ -84,6 +99,14 @@ export function useTrip() {
 
   const endTrip = useCallback(async () => {
     if (!trip) return;
+
+    const { status } = await Location.requestForegroundPermissionsAsync();
+    if (status !== 'granted') {
+      throw new Error('Location permission is required. Please enable it in Settings.');
+    }
+    if (Platform.OS === 'android') {
+      await Location.enableNetworkProviderAsync().catch(() => {});
+    }
 
     const location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
     const { latitude, longitude } = location.coords;

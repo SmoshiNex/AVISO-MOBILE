@@ -1,5 +1,5 @@
 import { StyleSheet } from 'react-native';
-import { Spacing, Radius } from '@/constants/theme';
+import { Spacing, Radius, Fonts } from '@/constants/theme';
 
 export const styles = StyleSheet.create({
   container: { flex: 1 },
@@ -12,13 +12,18 @@ export const styles = StyleSheet.create({
     paddingVertical: Spacing.md,
     borderBottomWidth: 1,
   },
-  headerTitle: { fontSize: 20, fontWeight: '700' },
-  headerCount: { fontSize: 13 },
+  headerTitle: { fontSize: 20, fontFamily: Fonts.bold },
+  headerCount: { fontSize: 13, fontFamily: Fonts.regular },
   listContent: { padding: Spacing.md, paddingBottom: 40 },
   tripCard: {
     borderRadius: Radius.lg,
     borderWidth: 1,
     overflow: 'hidden',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    elevation: 2,
   },
   tripCardTop: {
     flexDirection: 'row',
@@ -34,8 +39,8 @@ export const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   tripInfo: { flex: 1 },
-  tripDate: { fontSize: 15, fontWeight: '600' },
-  tripTime: { fontSize: 13, marginTop: 2 },
+  tripDate: { fontSize: 15, fontFamily: Fonts.semibold },
+  tripTime: { fontSize: 13, fontFamily: Fonts.regular, marginTop: 2 },
   tripStats: {
     flexDirection: 'row',
     borderTopWidth: 1,
@@ -44,7 +49,7 @@ export const styles = StyleSheet.create({
     gap: Spacing.md,
   },
   statItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  statText: { fontSize: 12 },
+  statText: { fontSize: 12, fontFamily: Fonts.regular },
   empty: {
     borderRadius: Radius.xl,
     padding: Spacing.xl,
@@ -52,6 +57,6 @@ export const styles = StyleSheet.create({
     gap: Spacing.sm,
     marginTop: Spacing.lg,
   },
-  emptyTitle: { fontSize: 16, fontWeight: '700' },
-  emptySubtitle: { fontSize: 13, textAlign: 'center', lineHeight: 20 },
+  emptyTitle: { fontSize: 16, fontFamily: Fonts.bold },
+  emptySubtitle: { fontSize: 13, fontFamily: Fonts.regular, textAlign: 'center', lineHeight: 20 },
 });

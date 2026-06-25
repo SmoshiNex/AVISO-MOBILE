@@ -2,60 +2,67 @@ import * as Speech from 'expo-speech';
 import { HAZARD_WARNINGS } from '@/constants/hazards';
 import type { DetectionResult } from '@/types';
 
-// Priority: lower number = higher priority (spoken first, interrupts lower)
 const PRIORITY: Record<string, number> = {
-  'Pothole': 1,
-  'Road Excavation': 1,
-  'Road Barrier': 1,
-  'Traffic Light Red': 2,
+  'Pothole':              1,
+  'Road Excavation':      1,
+  'Road Barrier':         1,
+  'Traffic Light Red':    2,
   'Traffic Light Orange': 2,
-  'Traffic Light Green': 3,
-  'Traffic Sign': 4,
+  'Traffic Light Green':  3,
+  'Traffic Sign':         4,
 };
 
-type QueueItem = {
-  text: string;
-  priority: number;
-};
+const COOLDOWN_MS = 6000;
 
-let queue: QueueItem[] = [];
+// Generation counter — incremented on every interrupt/stop.
+// Callbacks capture their gen and skip if superseded.
+let generation = 0;
 let speaking = false;
+let currentPriority = 99;
 let lastSpokenType = '';
 let lastSpokenAt = 0;
-const COOLDOWN_MS = 6000; // don't repeat the same type within 6 seconds
 
-function processQueue(): void {
-  if (speaking || queue.length === 0) return;
+function buildAnnouncement(
+  type: string,
+  signInstruction?: string,
+): string {
+  if (type === 'Traffic Sign' && signInstruction) {
+    return `Traffic sign detected ahead. ${signInstruction}`;
+  }
+  const warning = HAZARD_WARNINGS[type] ?? '';
+  return `${type} detected ahead. ${warning}`;
+}
 
-  // Sort by priority (ascending = higher priority first)
-  queue.sort((a, b) => a.priority - b.priority);
-  const next = queue.shift()!;
+function stopCurrent(): void {
+  generation++;
+  speaking = false;
+  currentPriority = 99;
+  Speech.stop();
+}
+
+function speakNow(text: string, priority: number): void {
+  const gen = generation;
   speaking = true;
+  currentPriority = priority;
 
-  Speech.speak(next.text, {
-    language: 'en-PH',
-    rate: 0.95,
+  Speech.speak(text, {
+    language: 'en-US',
+    rate: 0.9,
+    pitch: 0.8,
     onDone: () => {
+      if (generation !== gen) return;
       speaking = false;
-      processQueue();
+      currentPriority = 99;
     },
     onError: () => {
+      if (generation !== gen) return;
       speaking = false;
-      processQueue();
+      currentPriority = 99;
     },
-    onStopped: () => {
-      speaking = false;
-      processQueue();
-    },
+    onStopped: () => {},
   });
 }
 
-/**
- * Queues a voice alert for a detected hazard.
- * - Respects per-type cooldown to avoid spam
- * - High-priority hazards stop lower-priority speech
- * - Signs speak their sign instruction text
- */
 export function announceDetection(
   result: DetectionResult,
   signInstruction?: string,
@@ -66,36 +73,25 @@ export function announceDetection(
 
   if (isSameType && withinCooldown) return;
 
-  let text: string;
-  if (result.type === 'Traffic Sign' && signInstruction) {
-    text = signInstruction;
-  } else {
-    const warning = HAZARD_WARNINGS[result.type];
-    if (!warning) return;
-
-    text = result.distance !== undefined
-      ? `${result.distance} meters ahead — ${warning}`
-      : warning;
-  }
-
   const priority = PRIORITY[result.type] ?? 5;
-  const newItem: QueueItem = { text, priority };
+  const text = buildAnnouncement(result.type, signInstruction);
 
-  // If something lower-priority is speaking and a high-priority item arrives, stop it
-  if (speaking && priority < (queue[0]?.priority ?? 99)) {
-    Speech.stop();
-    speaking = false;
-  }
-
-  queue.push(newItem);
   lastSpokenType = result.type;
   lastSpokenAt = now;
 
-  processQueue();
+  if (!speaking) {
+    speakNow(text, priority);
+    return;
+  }
+
+  if (!isSameType || priority < currentPriority) {
+    stopCurrent();
+    speakNow(text, priority);
+  }
 }
 
 export function stopAllSpeech(): void {
-  Speech.stop();
-  queue = [];
-  speaking = false;
+  stopCurrent();
+  lastSpokenType = '';
+  lastSpokenAt = 0;
 }

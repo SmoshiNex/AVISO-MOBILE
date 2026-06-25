@@ -42,3 +42,10 @@ app-example
 # generated native folders
 /ios
 /android
+
+# Claude AI — session files, plans, memory, skill cache
+.claude/
+
+# Local Claude instruction files (machine-specific, not for repo)
+CLAUDE.md
+AGENTS.md

@@ -1,11 +1,12 @@
-﻿import { useRef } from 'react';
+﻿import { useEffect, useRef } from 'react';
 import {
   View,
   TouchableOpacity,
   Animated,
   Platform,
 } from 'react-native';
-import { Tabs } from 'expo-router';
+import { BlurView } from 'expo-blur';
+import { Tabs, useSegments } from 'expo-router';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -13,6 +14,8 @@ import { useCrashDetection } from '@/hooks/use-crash-detection';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Colors } from '@/constants/theme';
 import { styles } from '@/styles/rider-layout.style';
+import { generateJarvisAudio } from '@/lib/openai-tts';
+import { SOS_TEXT, SOS_CACHE_KEY } from '@/constants/sos';
 
 type Tab = {
   name: string;
@@ -27,10 +30,15 @@ const TABS: Tab[] = [
 ];
 
 function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
+  const segments = useSegments();
   const colorScheme = useColorScheme() ?? 'light';
-  const colors = Colors[colorScheme];
   const insets = useSafeAreaInsets();
   const scaleAnims = useRef(TABS.map(() => new Animated.Value(1))).current;
+
+  const HIDE_ON = ['emergency-alert', 'emergency-contacts', 'trip-history', 'hazard-logs', 'hazard-detail'];
+  if (HIDE_ON.some(s => segments.includes(s as any))) return null;
+
+  const colors = Colors[colorScheme];
 
   const visibleRoutes = state.routes.filter((r) =>
     TABS.some((t) => t.name === r.name),
@@ -64,14 +72,18 @@ function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
       ]}
       pointerEvents="box-none"
     >
-      <View style={[styles.tabBar, { backgroundColor: colors.tabBar }]}>
+      <BlurView
+        intensity={60}
+        tint="light"
+        style={styles.tabBar}
+      >
         {visibleRoutes.map((route) => {
           const tabIndex = TABS.findIndex((t) => t.name === route.name);
           if (tabIndex === -1) return null;
 
           const tab = TABS[tabIndex];
           const isFocused = state.routes[state.index]?.name === route.name;
-          const color = isFocused ? '#fff' : colors.icon;
+          const color = isFocused ? colors.actionText : colors.icon;
 
           return (
             <Animated.View
@@ -79,7 +91,7 @@ function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
               style={{ transform: [{ scale: scaleAnims[tabIndex] }] }}
             >
               <TouchableOpacity
-                style={[styles.tabItem, isFocused && { backgroundColor: colors.primary }]}
+                style={[styles.tabItem, isFocused && { backgroundColor: colors.actionBg }]}
                 onPress={() => handlePress(tabIndex, route.key, route.name)}
                 activeOpacity={0.8}
                 accessibilityRole="button"
@@ -95,13 +107,18 @@ function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
             </Animated.View>
           );
         })}
-      </View>
+      </BlurView>
     </View>
   );
 }
 
 export default function RiderLayout() {
   useCrashDetection();
+
+  // Pre-warm the SOS WAV so emergency-alert plays instantly on first entry
+  useEffect(() => {
+    generateJarvisAudio(SOS_TEXT, SOS_CACHE_KEY).catch(() => {});
+  }, []);
 
   return (
     <Tabs
@@ -112,7 +129,7 @@ export default function RiderLayout() {
       <Tabs.Screen name="camera" />
       <Tabs.Screen name="map" />
       <Tabs.Screen name="profile" />
-      {/* Non-tab screens â€” hidden from bar */}
+      {/* Non-tab screens — hidden from bar */}
       <Tabs.Screen name="hazard-logs"          options={{ href: null }} />
       <Tabs.Screen name="emergency-alert"      options={{ href: null }} />
       <Tabs.Screen name="emergency-contacts"   options={{ href: null }} />

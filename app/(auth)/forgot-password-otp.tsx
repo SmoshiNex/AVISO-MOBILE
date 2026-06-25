@@ -13,16 +13,11 @@ import {
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import * as SecureStore from 'expo-secure-store';
 import { api } from '@/lib/api-client';
-import { pullFromBackend } from '@/lib/sync-service';
-import type { User } from '@/types';
-
-type VerifyResponse = { token: string; user: User };
 
 const OTP_LENGTH = 6;
 
-export default function VerifyOtpScreen() {
+export default function ForgotPasswordOtpScreen() {
   const { email } = useLocalSearchParams<{ email: string }>();
   const [digits, setDigits] = useState<string[]>(Array(OTP_LENGTH).fill(''));
   const [loading, setLoading] = useState(false);
@@ -60,12 +55,14 @@ export default function VerifyOtpScreen() {
     }
     setLoading(true);
     try {
-      const res = await api.post<VerifyResponse>('/rider/auth/verify-otp', { email, otp });
-      await SecureStore.setItemAsync('rider_token', res.token);
-      await SecureStore.setItemAsync('rider_user', JSON.stringify(res.user));
-      await SecureStore.setItemAsync('rider_code', res.user.username ?? '');
-      pullFromBackend().catch(() => {});
-      router.replace('/(rider)/home');
+      const res = await api.post<{ reset_token: string }>(
+        '/rider/auth/forgot-password/verify',
+        { email, otp },
+      );
+      router.push({
+        pathname: '/(auth)/forgot-password-reset',
+        params: { reset_token: res.reset_token },
+      });
     } catch (err: any) {
       Toast.show({ type: 'error', text1: 'Verification Failed', text2: err?.message ?? 'Invalid or expired code.' });
     } finally {
@@ -76,17 +73,19 @@ export default function VerifyOtpScreen() {
   async function handleResend() {
     setResending(true);
     try {
-      await api.post('/rider/auth/resend-otp', { email });
+      await api.post('/rider/auth/forgot-password', { email });
       setCooldown(60);
       setDigits(Array(OTP_LENGTH).fill(''));
       inputRefs.current[0]?.focus();
-      Toast.show({ type: 'success', text1: 'Code Sent', text2: 'A new verification code has been sent to your email.' });
+      Toast.show({ type: 'success', text1: 'Code Sent', text2: 'A new reset code has been sent to your email.' });
     } catch (err: any) {
       Toast.show({ type: 'error', text1: err?.message ?? 'Could not resend code.' });
     } finally {
       setResending(false);
     }
   }
+
+  const otpFilled = digits.join('').length === OTP_LENGTH;
 
   return (
     <View style={styles.root}>
@@ -97,9 +96,15 @@ export default function VerifyOtpScreen() {
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         >
           <View style={styles.content}>
+            <View style={styles.steps}>
+              {[1, 2, 3].map((n) => (
+                <View key={n} style={[styles.stepDot, n <= 2 && styles.stepDotActive]} />
+              ))}
+            </View>
+
             <Text style={styles.title}>Check your email</Text>
             <Text style={styles.subtitle}>
-              We sent a 6-digit code to{'\n'}
+              We sent a 6-digit reset code to{'\n'}
               <Text style={styles.emailText}>{email}</Text>
             </Text>
 
@@ -108,10 +113,7 @@ export default function VerifyOtpScreen() {
                 <TextInput
                   key={i}
                   ref={(ref) => { inputRefs.current[i] = ref; }}
-                  style={[
-                    styles.otpBox,
-                    digit ? styles.otpBoxFilled : null,
-                  ]}
+                  style={[styles.otpBox, digit ? styles.otpBoxFilled : null]}
                   value={digit}
                   onChangeText={(text) => handleDigitChange(text, i)}
                   onKeyPress={({ nativeEvent }) => handleKeyPress(nativeEvent.key, i)}
@@ -126,14 +128,14 @@ export default function VerifyOtpScreen() {
             </View>
 
             <Pressable
-              style={[styles.button, (loading || digits.join('').length < OTP_LENGTH) && styles.buttonDisabled]}
+              style={[styles.button, (!otpFilled || loading) && styles.buttonDisabled]}
               onPress={handleVerify}
-              disabled={loading || digits.join('').length < OTP_LENGTH}
+              disabled={!otpFilled || loading}
             >
               {loading ? (
                 <ActivityIndicator color="#FFFFFF" />
               ) : (
-                <Text style={styles.buttonText}>Verify email</Text>
+                <Text style={styles.buttonText}>Verify Code</Text>
               )}
             </Pressable>
 
@@ -170,6 +172,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 32,
+  },
+  steps: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 8,
+    marginBottom: 28,
+  },
+  stepDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#DDDDDD',
+  },
+  stepDotActive: {
+    backgroundColor: '#0274DF',
+    width: 24,
   },
   title: {
     fontFamily: 'JetBrainsMono_700Bold',
@@ -234,6 +252,7 @@ const styles = StyleSheet.create({
     color: '#0274DF',
     fontSize: 14,
   },
+  resendDisabled: { color: '#AAAAAA' },
   backBtn: {
     marginTop: 8,
     minHeight: 44,
@@ -243,8 +262,5 @@ const styles = StyleSheet.create({
     fontFamily: 'JetBrainsMono_400Regular',
     color: '#AAAAAA',
     fontSize: 14,
-  },
-  resendDisabled: {
-    color: '#AAAAAA',
   },
 });
