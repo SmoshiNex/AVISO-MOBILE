@@ -1,51 +1,66 @@
-import { useEffect, useState } from 'react';
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
-import { Stack, router } from 'expo-router';
-import { StatusBar } from 'expo-status-bar';
-import 'react-native-reanimated';
-import * as SecureStore from 'expo-secure-store';
-import { Toaster } from 'sonner-native';
-import { useColorScheme } from '@/hooks/use-color-scheme';
-import { initDb } from '@/lib/local-db';
-import { startSyncInterval } from '@/lib/sync-service';
+﻿import "../global.css";
+import { useEffect } from "react";
+import {
+    DarkTheme,
+    DefaultTheme,
+    ThemeProvider,
+} from "@react-navigation/native";
+import { Stack } from "expo-router";
+import { StatusBar } from "expo-status-bar";
+import Toast from "react-native-toast-message";
+import { useFonts } from "expo-font";
+import * as SplashScreen from "expo-splash-screen";
+import {
+    JetBrainsMono_400Regular,
+    JetBrainsMono_500Medium,
+    JetBrainsMono_600SemiBold,
+    JetBrainsMono_700Bold,
+} from "@expo-google-fonts/jetbrains-mono";
+import { useColorScheme } from "@/hooks/use-color-scheme";
+import { initDb } from "@/lib/local-db";
+import { startSyncInterval, pullFromBackend } from "@/lib/sync-service";
+
+SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
-  const colorScheme = useColorScheme();
-  const [checked, setChecked] = useState(false);
+    const colorScheme = useColorScheme();
 
-  useEffect(() => {
-    let stopSync: (() => void) | undefined;
+    const [fontsLoaded] = useFonts({
+        JetBrainsMono_400Regular,
+        JetBrainsMono_500Medium,
+        JetBrainsMono_600SemiBold,
+        JetBrainsMono_700Bold,
+    });
 
-    (async () => {
-      await initDb();
-      stopSync = startSyncInterval(30_000);
+    useEffect(() => {
+        if (fontsLoaded) SplashScreen.hideAsync();
+    }, [fontsLoaded]);
 
-      const token = await SecureStore.getItemAsync('rider_token');
-      if (token) {
-        router.replace('/(rider)/home');
-      } else {
-        router.replace('/(auth)/login');
-      }
-      setChecked(true);
-    })();
+    useEffect(() => {
+        let stopSync: (() => void) | undefined;
 
-    return () => stopSync?.();
-  }, []);
+        (async () => {
+            try {
+                await initDb();
+                await pullFromBackend();
+                stopSync = startSyncInterval(30_000);
+            } catch (err) {
+                console.error("[startup] database init failed:", err);
+            }
+        })();
 
-  if (!checked) return null;
+        return () => stopSync?.();
+    }, []);
 
-  return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Stack screenOptions={{ headerShown: false }} />
-      <StatusBar style="auto" />
-      <Toaster
-        position="top-center"
-        offset={16}
-        richColors
-        toastOptions={{
-          style: { marginTop: 8 },
-        }}
-      />
-    </ThemeProvider>
-  );
+    if (!fontsLoaded) return null;
+
+    return (
+        <ThemeProvider
+            value={colorScheme === "dark" ? DarkTheme : DefaultTheme}
+        >
+            <Stack screenOptions={{ headerShown: false }} />
+            <StatusBar style="auto" />
+            <Toast />
+        </ThemeProvider>
+    );
 }

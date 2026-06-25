@@ -1,5 +1,5 @@
 import { StyleSheet } from 'react-native';
-import { Spacing, Radius } from '@/constants/theme';
+import { Spacing, Radius, Fonts } from '@/constants/theme';
 
 export const styles = StyleSheet.create({
   container: { flex: 1 },
@@ -12,8 +12,8 @@ export const styles = StyleSheet.create({
     paddingVertical: Spacing.md,
     borderBottomWidth: 1,
   },
-  headerTitle: { fontSize: 20, fontWeight: '700' },
-  headerCount: { fontSize: 13 },
+  headerTitle: { fontSize: 20, fontFamily: Fonts.bold },
+  headerCount: { fontSize: 13, fontFamily: Fonts.regular },
   listContent: { padding: Spacing.md, paddingBottom: 100 },
   row: {
     flexDirection: 'row',
@@ -23,6 +23,11 @@ export const styles = StyleSheet.create({
     borderWidth: 1,
     gap: 12,
     minHeight: 44,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 1,
   },
   typeIndicator: {
     width: 36,
@@ -33,12 +38,12 @@ export const styles = StyleSheet.create({
   },
   typeDot: { width: 12, height: 12, borderRadius: 6 },
   rowContent: { flex: 1, gap: 2 },
-  rowType: { fontSize: 14, fontWeight: '600' },
-  rowMeta: { fontSize: 12 },
-  rowArea: { fontSize: 12 },
+  rowType: { fontSize: 14, fontFamily: Fonts.semibold },
+  rowMeta: { fontSize: 12, fontFamily: Fonts.regular },
+  rowArea: { fontSize: 12, fontFamily: Fonts.regular },
   rowRight: { alignItems: 'flex-end', gap: 2 },
-  confidence: { fontSize: 13, fontWeight: '700' },
-  distance: { fontSize: 11 },
+  confidence: { fontSize: 13, fontFamily: Fonts.monoBold },
+  distance: { fontSize: 11, fontFamily: Fonts.regular },
   empty: {
     borderRadius: Radius.xl,
     padding: Spacing.xxl,
@@ -46,8 +51,8 @@ export const styles = StyleSheet.create({
     gap: Spacing.sm,
     marginTop: Spacing.lg,
   },
-  emptyTitle: { fontSize: 16, fontWeight: '700' },
-  emptySubtitle: { fontSize: 13, textAlign: 'center', lineHeight: 20 },
+  emptyTitle: { fontSize: 16, fontFamily: Fonts.bold },
+  emptySubtitle: { fontSize: 13, fontFamily: Fonts.regular, textAlign: 'center', lineHeight: 20 },
   modalBackdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)' },
   modalSheet: {
     borderTopLeftRadius: 24,
@@ -69,10 +74,10 @@ export const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: Spacing.md,
   },
-  modalTitle: { fontSize: 18, fontWeight: '700' },
+  modalTitle: { fontSize: 18, fontFamily: Fonts.bold },
   closeBtn: { padding: 4, minHeight: 44, minWidth: 44, alignItems: 'center', justifyContent: 'center' },
   detailGrid: { gap: 14 },
   detailRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  detailLabel: { fontSize: 13, width: 90 },
-  detailValue: { fontSize: 13, fontWeight: '600', flex: 1 },
+  detailLabel: { fontSize: 13, fontFamily: Fonts.regular, width: 90 },
+  detailValue: { fontSize: 13, fontFamily: Fonts.semibold, flex: 1 },
 });

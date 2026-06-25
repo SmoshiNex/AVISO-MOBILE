@@ -62,7 +62,7 @@ export class DemoDetectionSource implements DetectionSource {
   private callback: ((results: DetectionResult[]) => void) | null = null;
   private intervalMs: number;
 
-  constructor(intervalMs = 2500) {
+  constructor(intervalMs = 3500) {
     this.intervalMs = intervalMs;
   }
 

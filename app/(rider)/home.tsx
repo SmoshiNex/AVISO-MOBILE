@@ -1,4 +1,4 @@
-﻿import { useEffect, useState, useCallback } from 'react';
+﻿import { useCallback, useState } from 'react';
 import {
   View,
   Text,
@@ -7,11 +7,13 @@ import {
   RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
+import { Image } from 'expo-image';
+import { router, useFocusEffect } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import { Ionicons } from '@expo/vector-icons';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { getDashboardStats, getContactCount } from '@/lib/local-db';
+import { pullFromBackend } from '@/lib/sync-service';
 import { Colors } from '@/constants/theme';
 import { HAZARD_COLORS } from '@/constants/hazards';
 import type { LocalTrip, LocalHazardLog } from '@/types';
@@ -19,6 +21,7 @@ import { styles } from '@/styles/home.style';
 
 type DashboardData = {
   riderName: string;
+  avatarUrl: string | null;
   contactCount: number;
   totalTrips: number;
   totalDetections: number;
@@ -32,6 +35,8 @@ export default function HomeScreen() {
   const text = useThemeColor({}, 'text');
   const textSecondary = useThemeColor({}, 'textSecondary');
   const primary = useThemeColor({}, 'primary');
+  const actionBg = useThemeColor({}, 'actionBg');
+  const actionText = useThemeColor({}, 'actionText');
   const success = useThemeColor({}, 'success');
   const warning = useThemeColor({}, 'warning');
   const border = useThemeColor({}, 'border');
@@ -49,9 +54,11 @@ export default function HomeScreen() {
 
     const user = userJson ? JSON.parse(userJson) : null;
     const riderName = user?.first_name ?? 'Rider';
+    const avatarUrl = user?.avatar_url ?? null;
 
     setData({
       riderName,
+      avatarUrl,
       contactCount,
       totalTrips: stats.totalTrips,
       totalDetections: stats.totalDetections,
@@ -60,12 +67,15 @@ export default function HomeScreen() {
     });
   }, []);
 
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
+  useFocusEffect(
+    useCallback(() => {
+      pullFromBackend().catch(() => {}).finally(() => loadData());
+    }, [loadData]),
+  );
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
+    await pullFromBackend(true).catch(() => {});
     await loadData();
     setRefreshing(false);
   }, [loadData]);
@@ -111,15 +121,23 @@ export default function HomeScreen() {
         <View style={styles.header}>
           <View>
             <Text style={[styles.greeting, { color: textSecondary }]}>
-              {greeting()}, {data?.riderName ?? 'â€”'}
+              {greeting()}, {data?.riderName ?? '—'}
             </Text>
             <Text style={[styles.date, { color: text }]}>{formatDate()}</Text>
           </View>
-          <View style={[styles.avatarCircle, { backgroundColor: primary }]}>
-            <Text style={styles.avatarText}>
-              {data?.riderName?.[0]?.toUpperCase() ?? 'R'}
-            </Text>
-          </View>
+          {data?.avatarUrl ? (
+            <Image
+              source={{ uri: data.avatarUrl }}
+              style={[styles.avatarCircle, { borderRadius: 999 }]}
+              contentFit="cover"
+            />
+          ) : (
+            <View style={[styles.avatarCircle, { backgroundColor: actionBg }]}>
+              <Text style={styles.avatarText}>
+                {data?.riderName?.[0]?.toUpperCase() ?? 'R'}
+              </Text>
+            </View>
+          )}
         </View>
 
         {/* Safety Status Card */}
@@ -143,32 +161,32 @@ export default function HomeScreen() {
               styles.statusValue,
               { color: data && data.contactCount > 0 ? success : warning }
             ]}>
-              {data ? `${data.contactCount} set` : 'â€”'}
+              {data ? `${data.contactCount} set` : '—'}
             </Text>
           </View>
         </View>
 
         {/* Start Ride Button */}
         <TouchableOpacity
-          style={[styles.startButton, { backgroundColor: primary }]}
+          style={[styles.startButton, { backgroundColor: actionBg }]}
           onPress={() => router.navigate('/(rider)/camera')}
           activeOpacity={0.85}
         >
-          <Ionicons name="bicycle" size={22} color="#fff" style={{ marginRight: 8 }} />
-          <Text style={styles.startButtonText}>Start Ride</Text>
+          <Ionicons name="bicycle" size={22} color={actionText} style={{ marginRight: 8 }} />
+          <Text style={[styles.startButtonText, { color: actionText }]}>Start Ride</Text>
         </TouchableOpacity>
 
         {/* Stats Grid */}
         <View style={styles.statsGrid}>
           <View style={[styles.statCard, { backgroundColor: backgroundElement, borderColor: border }]}>
-            <Text style={[styles.statValue, { color: primary }]}>
-              {data?.totalTrips ?? 'â€”'}
+            <Text style={[styles.statValue, { color: text }]}>
+              {data?.totalTrips ?? '—'}
             </Text>
             <Text style={[styles.statLabel, { color: textSecondary }]}>Total Trips</Text>
           </View>
           <View style={[styles.statCard, { backgroundColor: backgroundElement, borderColor: border }]}>
-            <Text style={[styles.statValue, { color: primary }]}>
-              {data?.totalDetections ?? 'â€”'}
+            <Text style={[styles.statValue, { color: text }]}>
+              {data?.totalDetections ?? '—'}
             </Text>
             <Text style={[styles.statLabel, { color: textSecondary }]}>Total Detections</Text>
           </View>
@@ -181,7 +199,7 @@ export default function HomeScreen() {
               <Text style={[styles.cardTitle, { color: textSecondary }]}>LAST TRIP</Text>
               <Text style={[styles.tripMeta, { color: textSecondary }]}>
                 {formatTripDate(data.lastTrip.started_at)}
-                {data.lastTrip.ended_at ? ` â€¢ ${formatDuration(data.lastTrip)}` : ''}
+                {data.lastTrip.ended_at ? ` • ${formatDuration(data.lastTrip)}` : ''}
               </Text>
             </View>
 

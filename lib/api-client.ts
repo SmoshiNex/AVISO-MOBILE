@@ -1,34 +1,40 @@
+import axios from 'axios';
 import * as SecureStore from 'expo-secure-store';
 
-const BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? '';
-
-async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
-  const token = await SecureStore.getItemAsync('rider_token');
-  const headers: Record<string, string> = {
+const client = axios.create({
+  baseURL: `${process.env.EXPO_PUBLIC_API_URL ?? ''}/api`,
+  headers: {
     'Content-Type': 'application/json',
     Accept: 'application/json',
-  };
-  if (token) headers['Authorization'] = `Bearer ${token}`;
+  },
+});
 
-  const res = await fetch(`${BASE_URL}/api${path}`, {
-    method,
-    headers,
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-  });
+client.interceptors.request.use(async (config) => {
+  const token = await SecureStore.getItemAsync('rider_token');
+  if (token) config.headers['Authorization'] = `Bearer ${token}`;
+  return config;
+});
 
-  const json = await res.json().catch(() => ({}));
-
-  if (!res.ok) {
-    const message = json?.message ?? `Request failed with status ${res.status}`;
-    throw Object.assign(new Error(message), { status: res.status, errors: json?.errors });
+client.interceptors.response.use(
+  (res) => res.data,
+  (err) => {
+    const message =
+      err.response?.data?.message ?? `Request failed with status ${err.response?.status}`;
+    throw Object.assign(new Error(message), {
+      status: err.response?.status,
+      errors: err.response?.data?.errors,
+    });
   }
-
-  return json as T;
-}
+);
 
 export const api = {
-  get: <T>(path: string) => request<T>('GET', path),
-  post: <T>(path: string, body?: unknown) => request<T>('POST', path, body),
-  put: <T>(path: string, body?: unknown) => request<T>('PUT', path, body),
-  delete: <T>(path: string) => request<T>('DELETE', path),
+  get: <T>(path: string) => client.get<T, T>(path),
+  post: <T>(path: string, body?: unknown) => client.post<T, T>(path, body),
+  patch: <T>(path: string, body?: unknown) => client.patch<T, T>(path, body),
+  put: <T>(path: string, body?: unknown) => client.put<T, T>(path, body),
+  delete: <T>(path: string) => client.delete<T, T>(path),
+  postForm: <T>(path: string, formData: FormData) =>
+    client.post<T, T>(path, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
 };

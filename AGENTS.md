@@ -19,9 +19,9 @@ This project uses **Expo SDK 54** running in **Expo Go 54.x**.
 
 ## Before Writing Code
 
-Read ALL skill files in `.claude/skills/`:
-1. `aviso-mobile-architecture/ARCHITECTURE.md`
-2. `aviso-security/SECURITY.md`
-3. `react-best-practices/REACT-BEST-PRACTICES.md`
-4. `composition-patterns/COMPOSITION-PATTERNS.md`
-5. `mobile-design-guidelines/MOBILE-DESIGN-GUIDELINES.md`
+Use the Skill tool to invoke ALL skills in `.claude/skills/`:
+1. `Skill("aviso-mobile-architecture")`
+2. `Skill("aviso-security")`
+3. `Skill("react-best-practices")`
+4. `Skill("composition-patterns")`
+5. `Skill("mobile-design-guidelines")`

@@ -46,4 +46,20 @@ export const styles = StyleSheet.create({
     shadowRadius: 4,
   },
   rideBtnText: { color: '#fff', fontWeight: '700', fontSize: 16 },
+  hazardCountWrapper: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    paddingRight: Spacing.md,
+    paddingTop: Spacing.sm,
+  },
+  hazardCountBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    borderRadius: Radius.pill,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  hazardCountText: { color: '#fff', fontSize: 12, fontWeight: '700' },
 });

@@ -6,7 +6,7 @@
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "avisomobile",
-    "userInterfaceStyle": "automatic",
+    "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
@@ -14,7 +14,8 @@
         "NSCameraUsageDescription": "AVISO uses the camera to detect road hazards.",
         "NSLocationWhenInUseUsageDescription": "AVISO tracks your location during trips.",
         "NSContactsUsageDescription": "Select emergency contacts from your contacts list.",
-        "NSMicrophoneUsageDescription": "Required by the camera."
+        "NSMicrophoneUsageDescription": "Required by the camera.",
+        "NSPhotoLibraryUsageDescription": "AVISO needs access to your photos to set a profile picture."
       }
     },
     "android": {
@@ -24,6 +25,7 @@
         "ACCESS_COARSE_LOCATION",
         "CAMERA",
         "READ_CONTACTS",
+        "READ_MEDIA_IMAGES",
         "SEND_SMS"
       ],
       "adaptiveIcon": {
@@ -54,8 +56,25 @@
         }
       ],
       "expo-secure-store",
-      ["expo-camera", { "cameraPermission": "AVISO uses the camera to detect road hazards." }],
-      ["expo-location", { "locationAlwaysAndWhenInUsePermission": "AVISO tracks your location during trips." }]
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "AVISO uses the camera to detect road hazards."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "AVISO tracks your location during trips."
+        }
+      ],
+      "expo-sqlite",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "AVISO needs access to your photos to set a profile picture."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

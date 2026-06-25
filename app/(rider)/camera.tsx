@@ -1,4 +1,4 @@
-﻿import { useEffect, useRef, useState, useCallback } from 'react';
+import { useRef, useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,11 +7,12 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as Location from 'expo-location';
+import { Accelerometer, Gyroscope } from 'expo-sensors';
 import { Ionicons } from '@expo/vector-icons';
-import { toast } from 'sonner-native';
+import Toast from 'react-native-toast-message';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { useTrip } from '@/hooks/use-trip';
 import { DemoDetectionSource } from '@/lib/demo-detection-source';
@@ -19,13 +20,14 @@ import { announceDetection, stopAllSpeech } from '@/lib/voice-queue';
 import { saveHazardLog, incrementTripHazards } from '@/lib/local-db';
 import { resolveArea } from '@/lib/area-resolver';
 import { HAZARD_COLORS, HAZARD_WARNINGS } from '@/constants/hazards';
+import { CRASH_G_THRESHOLD, CRASH_ANGULAR_THRESHOLD } from '@/constants/detections';
 import type { DetectionResult } from '@/types';
 import roadSigns from '@/assets/data/road_sign_instructions.json';
 import { styles } from '@/styles/camera.style';
 
 type SourceMode = 'native' | 'otg';
 
-const detectionSource = new DemoDetectionSource(2500);
+const detectionSource = new DemoDetectionSource(3500);
 const LOG_COOLDOWN_MS = 8000;
 const lastLoggedAt: Record<string, number> = {};
 
@@ -34,23 +36,29 @@ export default function CameraScreen() {
   const [sourceMode, setSourceMode] = useState<SourceMode>('native');
   const [detections, setDetections] = useState<DetectionResult[]>([]);
   const [warningText, setWarningText] = useState<string | null>(null);
+  const [accelMag, setAccelMag] = useState(0);
+  const [gyroMag, setGyroMag] = useState(0);
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
-  const { trip, isActive, startTrip } = useTrip();
+  const { trip, isActive, startTrip, endTrip } = useTrip();
   const warningTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const detectionClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const primary = useThemeColor({}, 'primary');
 
-  // Start the detection source and subscribe to results
-  useEffect(() => {
-    detectionSource.onDetections(handleDetections);
-    detectionSource.start();
-    return () => {
-      detectionSource.stop();
-      stopAllSpeech();
-    };
-  }, []);
-
   const handleDetections = useCallback(async (results: DetectionResult[]) => {
-    setDetections(results);
+    // Only process detections when a ride is active
+    if (!isActive) {
+      setDetections([]);
+      return;
+    }
+
+    // Debounce clearing: keep boxes visible 1500ms after a miss frame
+    if (results.length > 0) {
+      if (detectionClearTimerRef.current) clearTimeout(detectionClearTimerRef.current);
+      setDetections(results);
+    } else {
+      detectionClearTimerRef.current = setTimeout(() => setDetections([]), 1500);
+      return;
+    }
 
     for (const result of results) {
       if (result.confidence < 0.6) continue;
@@ -79,40 +87,95 @@ export default function CameraScreen() {
             if (trip?.id) await incrementTripHazards(trip.id);
           }
         } catch {
-          // Location unavailable â€” still log without coords
+          // Location unavailable — still log without coords
         }
       }
 
-      // Voice alert
+      // Voice alert — delayed 50ms so bbox renders before audio starts
       const signInstruction = result.signKey
         ? (roadSigns as Record<string, { instruction: string }>)[result.signKey]?.instruction
         : undefined;
-      announceDetection(result, signInstruction);
+      setTimeout(() => announceDetection(result, signInstruction), 50);
 
-      // Warning banner
-      const warning = result.type === 'Traffic Sign' && signInstruction
-        ? signInstruction
-        : HAZARD_WARNINGS[result.type];
-
-      if (warning) {
-        setWarningText(warning);
-        if (warningTimer.current) clearTimeout(warningTimer.current);
-        warningTimer.current = setTimeout(() => setWarningText(null), 4000);
+      // Warning banner — Traffic Sign instruction already shown in signPanel, skip duplicate
+      if (result.type !== 'Traffic Sign') {
+        const warning = HAZARD_WARNINGS[result.type];
+        if (warning) {
+          setWarningText(warning);
+          if (warningTimer.current) clearTimeout(warningTimer.current);
+          warningTimer.current = setTimeout(() => setWarningText(null), 4000);
+        }
       }
     }
+  }, [trip, isActive]);
 
-    if (results.length === 0) {
-      // Don't clear immediately â€” let warning banner fade out naturally
+  // Clear AR state immediately when trip ends
+  useEffect(() => {
+    if (!isActive) {
+      if (detectionClearTimerRef.current) clearTimeout(detectionClearTimerRef.current);
+      setDetections([]);
+      setWarningText(null);
+      if (warningTimer.current) clearTimeout(warningTimer.current);
+      stopAllSpeech();
     }
-  }, [trip]);
+  }, [isActive]);
+
+  // Stable ref so useFocusEffect callback never re-registers on trip changes
+  const handleDetectionsRef = useRef(handleDetections);
+  handleDetectionsRef.current = handleDetections;
+
+  // Detection lifecycle — start on focus, stop on blur (fixes permanent detection on tab switch)
+  useFocusEffect(
+    useCallback(() => {
+      detectionSource.onDetections((r) => handleDetectionsRef.current(r));
+      detectionSource.start();
+      return () => {
+        if (detectionClearTimerRef.current) clearTimeout(detectionClearTimerRef.current);
+        detectionSource.stop();
+        stopAllSpeech();
+        setDetections([]);
+        setWarningText(null);
+      };
+    }, []),
+  );
+
+  // Sensor subscriptions — only while camera tab is focused
+  useFocusEffect(
+    useCallback(() => {
+      Accelerometer.setUpdateInterval(200);
+      Gyroscope.setUpdateInterval(200);
+      const accelSub = Accelerometer.addListener(({ x, y, z }) =>
+        setAccelMag(parseFloat(Math.sqrt(x * x + y * y + z * z).toFixed(2))),
+      );
+      const gyroSub = Gyroscope.addListener(({ x, y, z }) =>
+        setGyroMag(parseFloat(Math.sqrt(x * x + y * y + z * z).toFixed(2))),
+      );
+      return () => {
+        accelSub.remove();
+        gyroSub.remove();
+      };
+    }, []),
+  );
 
   const handleStartRide = useCallback(async () => {
-    toast.promise(startTrip(), {
-      loading: 'Starting ride...',
-      success: () => 'Ride started â€” stay safe!',
-      error: () => 'Could not start ride. Check your connection.',
-    });
+    Toast.show({ type: 'info', text1: 'Starting ride...' });
+    try {
+      await startTrip();
+      Toast.show({ type: 'success', text1: 'Ride started — stay safe!' });
+    } catch (err: any) {
+      Toast.show({ type: 'error', text1: err?.message ?? 'Could not start ride. Check your connection.' });
+    }
   }, [startTrip]);
+
+  const handleEndRide = useCallback(async () => {
+    Toast.show({ type: 'info', text1: 'Ending ride...' });
+    try {
+      await endTrip();
+      Toast.show({ type: 'success', text1: 'Ride ended and saved!' });
+    } catch {
+      Toast.show({ type: 'error', text1: 'Could not end ride.' });
+    }
+  }, [endTrip]);
 
   // Permission not yet determined
   if (!permission) return <View style={styles.container} />;
@@ -133,6 +196,11 @@ export default function CameraScreen() {
     );
   }
 
+  const activeSignDetection = detections.find((d) => d.signKey);
+  const signInstruction = activeSignDetection?.signKey
+    ? (roadSigns as Record<string, { instruction: string }>)[activeSignDetection.signKey]?.instruction
+    : null;
+
   return (
     <View style={styles.container}>
       {/* Camera feed */}
@@ -146,7 +214,7 @@ export default function CameraScreen() {
         </View>
       )}
 
-      {/* AR Overlay â€” bounding boxes */}
+      {/* AR Overlay — bounding boxes */}
       <View style={StyleSheet.absoluteFill} pointerEvents="none">
         {detections.map((d, i) => {
           const left = d.bbox.x * screenWidth;
@@ -166,6 +234,14 @@ export default function CameraScreen() {
           );
         })}
       </View>
+
+      {/* Traffic Sign instruction panel */}
+      {signInstruction && (
+        <View style={styles.signPanel} pointerEvents="none">
+          <Ionicons name="information-circle" size={16} color="#fff" />
+          <Text style={styles.signPanelText}>{signInstruction}</Text>
+        </View>
+      )}
 
       {/* Warning Banner */}
       {warningText && (
@@ -208,10 +284,34 @@ export default function CameraScreen() {
         </TouchableOpacity>
       </SafeAreaView>
 
+      {/* G-force / Gyro HUD */}
+      <View style={styles.sensorHud} pointerEvents="none">
+        <Text style={styles.sensorLabel}>G-Force</Text>
+        <Text style={[styles.sensorValue, { color: accelMag >= CRASH_G_THRESHOLD ? '#EF4444' : '#22C55E' }]}>
+          {accelMag} g
+        </Text>
+        <Text style={[styles.sensorLabel, { marginTop: 6 }]}>Gyro</Text>
+        <Text style={[styles.sensorValue, { color: gyroMag >= CRASH_ANGULAR_THRESHOLD ? '#EF4444' : '#22C55E' }]}>
+          {gyroMag} rad/s
+        </Text>
+      </View>
+
       {/* Demo badge */}
       <View style={styles.demoBadge} pointerEvents="none">
         <Text style={styles.demoBadgeText}>DEMO MODE</Text>
       </View>
+
+      {/* Live session bar with End Ride button */}
+      {isActive && (
+        <View style={styles.sessionBar} pointerEvents="box-none">
+          <View style={styles.sessionDot} />
+          <Text style={styles.sessionText}>Ride Live</Text>
+          <TouchableOpacity style={styles.endRideBtn} onPress={handleEndRide}>
+            <Ionicons name="stop-circle-outline" size={16} color="#fff" />
+            <Text style={styles.endRideBtnText}>End Ride</Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       {/* Start Ride overlay (when no active trip) */}
       {!isActive && (
@@ -243,13 +343,21 @@ function getBoxColor(d: DetectionResult): string {
   return HAZARD_COLORS[d.type] ?? '#0274DF';
 }
 
+const SHORT_TYPE: Record<string, string> = {
+  'Traffic Light Red':    'TL Red',
+  'Traffic Light Green':  'TL Green',
+  'Traffic Light Orange': 'TL Orange',
+  'Road Excavation':      'Road Exc.',
+  'Road Barrier':         'Barrier',
+  'Traffic Sign':         'Sign',
+};
+
 function getBadgeLabel(d: DetectionResult): string {
-  if (d.distance !== undefined) return `${d.type} â€¢ ${d.distance}m`;
-  if (d.trafficState) return d.type;
+  const label = SHORT_TYPE[d.type] ?? d.type;
+  if (d.distance !== undefined) return `${label} ${d.distance}m`;
   if (d.signKey) {
     const sign = (roadSigns as Record<string, { name: string }>)[d.signKey];
-    return sign?.name ?? 'Traffic Sign';
+    return sign?.name ?? 'Sign';
   }
-  return d.type;
+  return label;
 }
-

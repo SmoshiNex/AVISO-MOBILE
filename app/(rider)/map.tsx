@@ -11,10 +11,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import MapView, { Marker, Polyline, PROVIDER_DEFAULT } from 'react-native-maps';
 import { useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { toast } from 'sonner-native';
+import Toast from 'react-native-toast-message';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { useTrip } from '@/hooks/use-trip';
-import { getTripById, getHazardLogsForTrip } from '@/lib/local-db';
+import { getTripById, getHazardLogsForTrip, getHazardLogs } from '@/lib/local-db';
 import { HAZARD_COLORS } from '@/constants/hazards';
 import type { LocalTrip, LocalHazardLog } from '@/types';
 import { styles } from '@/styles/map.style';
@@ -47,6 +47,17 @@ export default function MapScreen() {
   const [historyHazards, setHistoryHazards] = useState<LocalHazardLog[]>([]);
   const [loading, setLoading] = useState(false);
 
+  // Live mode — area-wide hazard layer (all logged hazards from all trips)
+  const [liveHazards, setLiveHazards] = useState<LocalHazardLog[]>([]);
+
+  useEffect(() => {
+    if (isHistoryMode) return;
+    const load = () => getHazardLogs().then(setLiveHazards);
+    load();
+    const interval = setInterval(load, 5000);
+    return () => clearInterval(interval);
+  }, [isHistoryMode]);
+
   useEffect(() => {
     if (!isHistoryMode) return;
     setLoading(true);
@@ -60,19 +71,23 @@ export default function MapScreen() {
   }, [trip_id, isHistoryMode]);
 
   const handleStartRide = useCallback(async () => {
-    toast.promise(startTrip(), {
-      loading: 'Starting ride...',
-      success: () => 'Ride started — drive safe!',
-      error: () => 'Could not start. Check your connection.',
-    });
+    Toast.show({ type: 'info', text1: 'Starting ride...' });
+    try {
+      await startTrip();
+      Toast.show({ type: 'success', text1: 'Ride started — drive safe!' });
+    } catch {
+      Toast.show({ type: 'error', text1: 'Could not start. Check your connection.' });
+    }
   }, [startTrip]);
 
   const handleEndRide = useCallback(async () => {
-    toast.promise(endTrip(), {
-      loading: 'Ending ride...',
-      success: () => 'Ride ended and saved!',
-      error: () => 'Could not end ride.',
-    });
+    Toast.show({ type: 'info', text1: 'Ending ride...' });
+    try {
+      await endTrip();
+      Toast.show({ type: 'success', text1: 'Ride ended and saved!' });
+    } catch {
+      Toast.show({ type: 'error', text1: 'Could not end ride.' });
+    }
   }, [endTrip]);
 
   const formatDuration = (trip: LocalTrip): string => {
@@ -230,7 +245,28 @@ export default function MapScreen() {
             pinColor="#22C55E"
           />
         )}
+
+        {/* Area-wide hazard layer */}
+        {liveHazards.map((h) => (
+          <Marker
+            key={h.id}
+            coordinate={{ latitude: h.latitude, longitude: h.longitude }}
+            title={h.type}
+            description={`${Math.round(h.confidence * 100)}% confidence`}
+            pinColor={HAZARD_COLORS[h.type] ?? primary}
+          />
+        ))}
       </MapView>
+
+      {/* Hazard count badge */}
+      {liveHazards.length > 0 && (
+        <SafeAreaView edges={['top']} style={styles.hazardCountWrapper} pointerEvents="none">
+          <View style={[styles.hazardCountBadge, { backgroundColor: primary }]}>
+            <Ionicons name="warning-outline" size={12} color="#fff" />
+            <Text style={styles.hazardCountText}>{liveHazards.length} hazards</Text>
+          </View>
+        </SafeAreaView>
+      )}
 
       {/* Start/End Ride controls */}
       <SafeAreaView edges={['bottom']} style={styles.rideControls} pointerEvents="box-none">
