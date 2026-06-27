@@ -50,12 +50,10 @@ export default function ProfileScreen() {
   const [loggingOut,     setLoggingOut]     = useState(false);
   const [uploadingAvatar,setUploadingAvatar]= useState(false);
 
-  // Username editing
   const [editingUsername, setEditingUsername] = useState(false);
   const [usernameInput,   setUsernameInput]   = useState('');
   const [savingUsername,  setSavingUsername]  = useState(false);
 
-  // Address editing
   const [editingAddress,   setEditingAddress]   = useState(false);
   const [streetInput,      setStreetInput]      = useState('');
   const [selBarangayCode,  setSelBarangayCode]  = useState('');
@@ -214,6 +212,16 @@ export default function ProfileScreen() {
       onPress: () => router.push('/(rider)/trip-history'),
     },
     {
+      icon: 'person-outline',
+      label: 'Personal Information',
+      onPress: () => router.push('/(rider)/personal-information'),
+    },
+    {
+      icon: 'warning-outline',
+      label: 'My Detections',
+      onPress: () => router.push('/(rider)/hazard-logs'),
+    },
+    {
       icon: 'log-out-outline',
       label: loggingOut ? 'Logging out...' : 'Log Out',
       onPress: handleLogout,
@@ -306,7 +314,6 @@ export default function ProfileScreen() {
           <InfoRow icon="call-outline" label="Contact" value={user?.contact_number} textColor={text} labelColor={textSecondary} />
           <View style={[styles.divider, { backgroundColor: border }]} />
 
-          {/* Address row — tappable to edit */}
           {!editingAddress ? (
             <TouchableOpacity style={styles.infoRow} onPress={handleStartEditAddress} activeOpacity={0.7}>
               <Ionicons name="location-outline" size={16} color={textSecondary} />
@@ -318,12 +325,10 @@ export default function ProfileScreen() {
             </TouchableOpacity>
           ) : (
             <View style={{ padding: 12, gap: 10 }}>
-              {/* Locked city label */}
               <View style={{ backgroundColor: backgroundElement, borderRadius: 8, padding: 12, borderWidth: 1, borderColor: border }}>
                 <Text style={{ color: textSecondary, fontSize: 13 }}>City of Zamboanga, Zamboanga Peninsula</Text>
               </View>
 
-              {/* Barangay picker */}
               <Text style={[styles.infoLabel, { color: textSecondary }]}>Barangay</Text>
               <TouchableOpacity
                 style={{ backgroundColor: backgroundElement, borderColor: border, borderWidth: 1, borderRadius: 8, padding: 12, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', opacity: loadingBarangays ? 0.6 : 1 }}
@@ -338,7 +343,6 @@ export default function ProfileScreen() {
                 <Ionicons name="chevron-down" size={16} color={textSecondary} />
               </TouchableOpacity>
 
-              {/* Street input */}
               <Text style={[styles.infoLabel, { color: textSecondary }]}>Street / House No. (Optional)</Text>
               <TextInput
                 style={{ backgroundColor: backgroundElement, borderColor: border, borderWidth: 1, borderRadius: 8, padding: 12, color: text }}
@@ -349,7 +353,6 @@ export default function ProfileScreen() {
                 maxLength={255}
               />
 
-              {/* Save / Cancel */}
               <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
                 <TouchableOpacity
                   style={{ flex: 1, borderRadius: 8, borderWidth: 1, borderColor: border, padding: 12, alignItems: 'center' }}

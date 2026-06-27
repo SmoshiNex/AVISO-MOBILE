@@ -4,7 +4,7 @@
     "slug": "aviso-mobile",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
+    "icon": "./assets/images/aviso-logo-android/play_store_512.png",
     "scheme": "avisomobile",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
@@ -15,7 +15,16 @@
         "NSLocationWhenInUseUsageDescription": "AVISO tracks your location during trips.",
         "NSContactsUsageDescription": "Select emergency contacts from your contacts list.",
         "NSMicrophoneUsageDescription": "Required by the camera.",
-        "NSPhotoLibraryUsageDescription": "AVISO needs access to your photos to set a profile picture."
+        "NSPhotoLibraryUsageDescription": "AVISO needs access to your photos to set a profile picture.",
+        "NSAppTransportSecurity": {
+          "NSAllowsArbitraryLoads": false,
+          "NSExceptionDomains": {
+            "10.231.217.5": {
+              "NSExceptionAllowsInsecureHTTPLoads": true,
+              "NSIncludesSubdomains": false
+            }
+          }
+        }
       }
     },
     "android": {
@@ -29,10 +38,9 @@
         "SEND_SMS"
       ],
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/images/android-icon-foreground.png",
-        "backgroundImage": "./assets/images/android-icon-background.png",
-        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+        "foregroundImage": "./assets/images/aviso-logo-android/res/mipmap-xxxhdpi/ic_launcher_foreground.png",
+        "backgroundImage": "./assets/images/aviso-logo-android/res/mipmap-xxxhdpi/ic_launcher_background.png",
+        "monochromeImage": "./assets/images/aviso-logo-android/res/mipmap-xxxhdpi/ic_launcher_monochrome.png"
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false
