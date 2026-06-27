@@ -15,8 +15,9 @@ import Toast from 'react-native-toast-message';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { useTrip } from '@/hooks/use-trip';
 import { getTripById, getHazardLogsForTrip, getHazardLogs } from '@/lib/local-db';
+import { api } from '@/lib/api-client';
 import { HAZARD_COLORS } from '@/constants/hazards';
-import type { LocalTrip, LocalHazardLog } from '@/types';
+import type { LocalTrip, LocalHazardLog, HazardLog } from '@/types';
 import { styles } from '@/styles/map.style';
 
 // Zamboanga City center
@@ -47,14 +48,30 @@ export default function MapScreen() {
   const [historyHazards, setHistoryHazards] = useState<LocalHazardLog[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // Live mode — area-wide hazard layer (all logged hazards from all trips)
+  // Live mode — locally detected hazards from SQLite (this rider's session)
   const [liveHazards, setLiveHazards] = useState<LocalHazardLog[]>([]);
+
+  // Live mode — all active hazards from the backend (all riders, synced with admin map)
+  const [backendHazards, setBackendHazards] = useState<HazardLog[]>([]);
 
   useEffect(() => {
     if (isHistoryMode) return;
     const load = () => getHazardLogs().then(setLiveHazards);
     load();
     const interval = setInterval(load, 5000);
+    return () => clearInterval(interval);
+  }, [isHistoryMode]);
+
+  useEffect(() => {
+    if (isHistoryMode) return;
+    const fetchBackendHazards = async () => {
+      try {
+        const data = await api.get<HazardLog[]>('/rider/hazards');
+        setBackendHazards(data);
+      } catch {}
+    };
+    fetchBackendHazards();
+    const interval = setInterval(fetchBackendHazards, 15000);
     return () => clearInterval(interval);
   }, [isHistoryMode]);
 
@@ -246,24 +263,40 @@ export default function MapScreen() {
           />
         )}
 
-        {/* Area-wide hazard layer */}
+        {/* Local hazards detected this session */}
         {liveHazards.map((h) => (
           <Marker
-            key={h.id}
+            key={`local-${h.id}`}
             coordinate={{ latitude: h.latitude, longitude: h.longitude }}
             title={h.type}
             description={`${Math.round(h.confidence * 100)}% confidence`}
             pinColor={HAZARD_COLORS[h.type] ?? primary}
           />
         ))}
+
+        {/* Community hazard layer — all riders' detected hazards (synced with admin map) */}
+        {backendHazards.map((h) => (
+          <Marker
+            key={`api-${h.id}`}
+            coordinate={{
+              latitude: parseFloat(h.latitude),
+              longitude: parseFloat(h.longitude),
+            }}
+            title={h.type}
+            description={`${h.area ?? ''} · ${h.confidence}% confidence`}
+            pinColor={HAZARD_COLORS[h.type] ?? primary}
+          />
+        ))}
       </MapView>
 
       {/* Hazard count badge */}
-      {liveHazards.length > 0 && (
+      {(liveHazards.length + backendHazards.length) > 0 && (
         <SafeAreaView edges={['top']} style={styles.hazardCountWrapper} pointerEvents="none">
           <View style={[styles.hazardCountBadge, { backgroundColor: primary }]}>
             <Ionicons name="warning-outline" size={12} color="#fff" />
-            <Text style={styles.hazardCountText}>{liveHazards.length} hazards</Text>
+            <Text style={styles.hazardCountText}>
+              {liveHazards.length + backendHazards.length} hazards
+            </Text>
           </View>
         </SafeAreaView>
       )}
