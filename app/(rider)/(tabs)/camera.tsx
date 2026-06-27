@@ -45,13 +45,11 @@ export default function CameraScreen() {
   const primary = useThemeColor({}, 'primary');
 
   const handleDetections = useCallback(async (results: DetectionResult[]) => {
-    // Only process detections when a ride is active
     if (!isActive) {
       setDetections([]);
       return;
     }
 
-    // Debounce clearing: keep boxes visible 1500ms after a miss frame
     if (results.length > 0) {
       if (detectionClearTimerRef.current) clearTimeout(detectionClearTimerRef.current);
       setDetections(results);
@@ -63,7 +61,6 @@ export default function CameraScreen() {
     for (const result of results) {
       if (result.confidence < 0.6) continue;
 
-      // Log to SQLite with cooldown per type
       const now = Date.now();
       if (!lastLoggedAt[result.type] || now - lastLoggedAt[result.type] > LOG_COOLDOWN_MS) {
         lastLoggedAt[result.type] = now;
@@ -91,13 +88,11 @@ export default function CameraScreen() {
         }
       }
 
-      // Voice alert — delayed 50ms so bbox renders before audio starts
       const signInstruction = result.signKey
         ? (roadSigns as Record<string, { instruction: string }>)[result.signKey]?.instruction
         : undefined;
       setTimeout(() => announceDetection(result, signInstruction), 50);
 
-      // Warning banner — Traffic Sign instruction already shown in signPanel, skip duplicate
       if (result.type !== 'Traffic Sign') {
         const warning = HAZARD_WARNINGS[result.type];
         if (warning) {
@@ -109,7 +104,6 @@ export default function CameraScreen() {
     }
   }, [trip, isActive]);
 
-  // Clear AR state immediately when trip ends
   useEffect(() => {
     if (!isActive) {
       if (detectionClearTimerRef.current) clearTimeout(detectionClearTimerRef.current);
@@ -120,11 +114,9 @@ export default function CameraScreen() {
     }
   }, [isActive]);
 
-  // Stable ref so useFocusEffect callback never re-registers on trip changes
   const handleDetectionsRef = useRef(handleDetections);
   handleDetectionsRef.current = handleDetections;
 
-  // Detection lifecycle — start on focus, stop on blur (fixes permanent detection on tab switch)
   useFocusEffect(
     useCallback(() => {
       detectionSource.onDetections((r) => handleDetectionsRef.current(r));
@@ -139,7 +131,6 @@ export default function CameraScreen() {
     }, []),
   );
 
-  // Sensor subscriptions — only while camera tab is focused
   useFocusEffect(
     useCallback(() => {
       Accelerometer.setUpdateInterval(200);
@@ -177,10 +168,8 @@ export default function CameraScreen() {
     }
   }, [endTrip]);
 
-  // Permission not yet determined
   if (!permission) return <View style={styles.container} />;
 
-  // Permission denied
   if (!permission.granted) {
     return (
       <SafeAreaView style={styles.permissionContainer} edges={['top']}>
@@ -203,7 +192,6 @@ export default function CameraScreen() {
 
   return (
     <View style={styles.container}>
-      {/* Camera feed */}
       {sourceMode === 'native' ? (
         <CameraView style={StyleSheet.absoluteFill} facing="back" />
       ) : (
@@ -214,7 +202,6 @@ export default function CameraScreen() {
         </View>
       )}
 
-      {/* AR Overlay — bounding boxes */}
       <View style={StyleSheet.absoluteFill} pointerEvents="none">
         {detections.map((d, i) => {
           const left = d.bbox.x * screenWidth;
@@ -235,7 +222,6 @@ export default function CameraScreen() {
         })}
       </View>
 
-      {/* Traffic Sign instruction panel */}
       {signInstruction && (
         <View style={styles.signPanel} pointerEvents="none">
           <Ionicons name="information-circle" size={16} color="#fff" />
@@ -243,7 +229,6 @@ export default function CameraScreen() {
         </View>
       )}
 
-      {/* Warning Banner */}
       {warningText && (
         <View style={styles.warningBanner} pointerEvents="none">
           <Ionicons name="warning" size={16} color="#fff" />
@@ -251,9 +236,7 @@ export default function CameraScreen() {
         </View>
       )}
 
-      {/* Top Controls */}
       <SafeAreaView style={styles.topOverlay} edges={['top']} pointerEvents="box-none">
-        {/* Source toggle */}
         <View style={styles.sourceToggle}>
           <TouchableOpacity
             style={[styles.toggleBtn, sourceMode === 'native' && styles.toggleBtnActive]}
@@ -275,7 +258,6 @@ export default function CameraScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* SOS button */}
         <TouchableOpacity
           style={styles.sosBtn}
           onPress={() => router.push('/(rider)/emergency-alert')}
@@ -284,7 +266,6 @@ export default function CameraScreen() {
         </TouchableOpacity>
       </SafeAreaView>
 
-      {/* G-force / Gyro HUD */}
       <View style={styles.sensorHud} pointerEvents="none">
         <Text style={styles.sensorLabel}>G-Force</Text>
         <Text style={[styles.sensorValue, { color: accelMag >= CRASH_G_THRESHOLD ? '#EF4444' : '#22C55E' }]}>
@@ -296,12 +277,10 @@ export default function CameraScreen() {
         </Text>
       </View>
 
-      {/* Demo badge */}
       <View style={styles.demoBadge} pointerEvents="none">
         <Text style={styles.demoBadgeText}>DEMO MODE</Text>
       </View>
 
-      {/* Live session bar with End Ride button */}
       {isActive && (
         <View style={styles.sessionBar} pointerEvents="box-none">
           <View style={styles.sessionDot} />
@@ -313,7 +292,6 @@ export default function CameraScreen() {
         </View>
       )}
 
-      {/* Start Ride overlay (when no active trip) */}
       {!isActive && (
         <View style={styles.startRideOverlay}>
           <View style={styles.startRideCard}>

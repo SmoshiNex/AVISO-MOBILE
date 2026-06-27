@@ -1,4 +1,4 @@
-﻿import { useCallback, useState } from 'react';
+import { useCallback, useState } from 'react';
 import {
   View,
   Text,
@@ -262,4 +262,3 @@ export default function HomeScreen() {
     </SafeAreaView>
   );
 }
-
