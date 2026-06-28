@@ -223,6 +223,21 @@ export async function markHazardLogSynced(localId: number, remoteId: number): Pr
   );
 }
 
+export async function reconcileHazardLogSynced(
+  detectedAt: string,
+  type: string,
+  remoteId: number,
+): Promise<boolean> {
+  // SUBSTR to 19 chars strips ms/µs differences:
+  // local → "2026-06-22T05:18:00.123Z", backend → "2026-06-22T05:18:00.000000Z"
+  const result = await getDb().runAsync(
+    `UPDATE hazard_logs SET synced = 1, remote_id = ?
+     WHERE synced = 0 AND type = ? AND SUBSTR(detected_at, 1, 19) = SUBSTR(?, 1, 19)`,
+    [remoteId, type, detectedAt],
+  );
+  return result.changes > 0;
+}
+
 // ─── CRASH EVENTS ────────────────────────────────────────────────────────────
 
 export async function saveCrashEvent(event: Omit<LocalCrashEvent, 'id'>): Promise<number> {

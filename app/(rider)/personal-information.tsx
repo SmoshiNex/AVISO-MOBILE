@@ -19,11 +19,12 @@ import { api } from '@/lib/api-client';
 import { sanitizeText } from '@/lib/sanitize';
 import type { User } from '@/types';
 
-type EditableField = 'first_name' | 'last_name' | 'email' | 'contact_number';
+type EditableField = 'first_name' | 'last_name' | 'username' | 'email' | 'contact_number';
 
 const FIELDS: { key: EditableField; label: string; icon: string; keyboardType?: any; autoCapitalize?: any }[] = [
   { key: 'first_name',     label: 'First Name',     icon: 'person-outline',  autoCapitalize: 'words'  },
   { key: 'last_name',      label: 'Last Name',      icon: 'person-outline',  autoCapitalize: 'words'  },
+  { key: 'username',       label: 'Username',       icon: 'at-outline',      autoCapitalize: 'none'   },
   { key: 'email',          label: 'Email',           icon: 'mail-outline',    keyboardType: 'email-address', autoCapitalize: 'none' },
   { key: 'contact_number', label: 'Contact Number', icon: 'call-outline',    keyboardType: 'phone-pad', autoCapitalize: 'none' },
 ];
@@ -69,10 +70,14 @@ export default function PersonalInformationScreen() {
     }
     setSaving(true);
     try {
-      const res: any = await api.patch('/rider/profile/personal', { [editingField]: value });
+      const endpoint = editingField === 'username' ? '/rider/profile' : '/rider/profile/personal';
+      const res: any = await api.patch(endpoint, { [editingField]: value });
       const updatedUser = { ...user, ...res };
       setUser(updatedUser);
       await SecureStore.setItemAsync('rider_user', JSON.stringify(updatedUser));
+      if (editingField === 'username') {
+        await SecureStore.setItemAsync('rider_code', value);
+      }
       setEditingField(null);
       Toast.show({ type: 'success', text1: 'Updated successfully!' });
     } catch (err: any) {
@@ -125,7 +130,7 @@ export default function PersonalInformationScreen() {
                           autoCapitalize={field.autoCapitalize ?? 'sentences'}
                           autoCorrect={false}
                           keyboardType={field.keyboardType ?? 'default'}
-                          maxLength={field.key === 'email' ? 255 : 100}
+                          maxLength={field.key === 'email' ? 255 : field.key === 'username' ? 30 : 100}
                         />
                         <View style={{ flexDirection: 'row', gap: 8 }}>
                           <TouchableOpacity
