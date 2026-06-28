@@ -17,13 +17,16 @@ import {
     JetBrainsMono_700Bold,
 } from "@expo-google-fonts/jetbrains-mono";
 import { useColorScheme } from "@/hooks/use-color-scheme";
+import { useNetworkStatus } from "@/hooks/use-network-status";
 import { initDb } from "@/lib/local-db";
 import { startSyncInterval, pullFromBackend } from "@/lib/sync-service";
+import { OfflineBanner } from "@/components/OfflineBanner";
 
 SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
     const colorScheme = useColorScheme();
+    const { isOnline } = useNetworkStatus();
 
     const [fontsLoaded] = useFonts({
         JetBrainsMono_400Regular,
@@ -60,6 +63,7 @@ export default function RootLayout() {
         >
             <Stack screenOptions={{ headerShown: false }} />
             <StatusBar style="auto" />
+            <OfflineBanner isVisible={!isOnline} />
             <Toast />
         </ThemeProvider>
     );

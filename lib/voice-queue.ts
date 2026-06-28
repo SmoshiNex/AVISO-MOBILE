@@ -23,14 +23,19 @@ let lastSpokenType = '';
 let lastSpokenAt = 0;
 
 function buildAnnouncement(
-  type: string,
+  result: DetectionResult,
   signInstruction?: string,
 ): string {
+  const type = result.type;
   if (type === 'Traffic Sign' && signInstruction) {
-    return `Traffic sign detected ahead. ${signInstruction}`;
+    return signInstruction;
   }
-  const warning = HAZARD_WARNINGS[type] ?? '';
-  return `${type} detected ahead. ${warning}`;
+  
+  if (result.distance !== undefined && result.distance !== null) {
+    return `${type} detected ${Math.round(result.distance)} meters ahead.`;
+  }
+  
+  return HAZARD_WARNINGS[type] ?? `${type} detected.`;
 }
 
 function stopCurrent(): void {
@@ -74,7 +79,7 @@ export function announceDetection(
   if (isSameType && withinCooldown) return;
 
   const priority = PRIORITY[result.type] ?? 5;
-  const text = buildAnnouncement(result.type, signInstruction);
+  const text = buildAnnouncement(result, signInstruction);
 
   lastSpokenType = result.type;
   lastSpokenAt = now;

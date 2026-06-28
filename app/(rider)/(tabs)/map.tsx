@@ -253,8 +253,8 @@ export default function MapScreen() {
             minLng: region.longitude - region.longitudeDelta / 2,
             maxLng: region.longitude + region.longitudeDelta / 2,
           });
-          setSelectedHazard(null);
         }}
+        onPress={() => setSelectedHazard(null)}
       >
         {routeCoords.length > 1 && (
           <Polyline coordinates={routeCoords} strokeColor={primary} strokeWidth={3} />

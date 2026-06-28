@@ -1,4 +1,4 @@
-﻿import { useRef, useState, useEffect } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import Toast from 'react-native-toast-message';
 import {
   ActivityIndicator,
@@ -154,7 +154,7 @@ export default function ForgotPasswordOtpScreen() {
             </Pressable>
 
             <Pressable onPress={() => router.back()} style={styles.backBtn}>
-              <Text style={styles.backText}>â† Go back</Text>
+              <Text style={styles.backText}>← Go back</Text>
             </Pressable>
           </View>
         </KeyboardAvoidingView>

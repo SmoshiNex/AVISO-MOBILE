@@ -13,7 +13,7 @@ export default function IndexPage() {
             .then((token) => {
                 if (!mounted) return;
 
-                setTarget(token ? "/(rider)/home" : "/(auth)/login");
+                setTarget(token ? "/(rider)/(tabs)/home" : "/(auth)/login");
             })
             .catch(() => {
                 if (mounted) {

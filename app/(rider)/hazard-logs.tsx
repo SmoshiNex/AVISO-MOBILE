@@ -10,6 +10,8 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import Toast from 'react-native-toast-message';
+import * as Network from 'expo-network';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { getHazardLogs } from '@/lib/local-db';
 import { pullFromBackend } from '@/lib/sync-service';
@@ -42,9 +44,16 @@ export default function HazardLogsScreen() {
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
+    const state = await Network.getNetworkStateAsync();
+    const online = state.isConnected === true && state.isInternetReachable !== false;
     await pullFromBackend(true);
     await loadLogs();
     setRefreshing(false);
+    if (online) {
+      Toast.show({ type: 'success', text1: 'Up to date', text2: 'Synced with server', visibilityTime: 2500 });
+    } else {
+      Toast.show({ type: 'info', text1: 'Offline', text2: 'Showing locally cached detections', visibilityTime: 3000 });
+    }
   }, [loadLogs]);
 
   const formatDate = (dateStr: string): string => {

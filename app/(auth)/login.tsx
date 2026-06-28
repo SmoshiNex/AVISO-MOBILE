@@ -1,4 +1,4 @@
-﻿import { useState } from 'react';
+import { useState } from 'react';
 import Toast from 'react-native-toast-message';
 import {
   ActivityIndicator,
@@ -14,7 +14,7 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as SecureStore from 'expo-secure-store';
 import { api } from '@/lib/api-client';
@@ -24,7 +24,8 @@ import type { User } from '@/types';
 type LoginResponse = { token: string; user: User };
 
 export default function LoginScreen() {
-  const [email, setEmail] = useState('');
+  const params = useLocalSearchParams<{ email?: string }>();
+  const [email, setEmail] = useState(params.email || '');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -38,7 +39,7 @@ export default function LoginScreen() {
       await SecureStore.setItemAsync('rider_user', JSON.stringify(res.user));
       await SecureStore.setItemAsync('rider_code', res.user.username ?? '');
       pullFromBackend().catch(() => {});
-      router.replace('/(rider)/home');
+      router.replace('/(rider)/(tabs)/home');
     } catch (err: any) {
       Toast.show({ type: 'error', text1: 'Login Failed', text2: err?.message ?? 'Invalid credentials. Please try again.' });
     } finally {
@@ -52,12 +53,13 @@ export default function LoginScreen() {
       <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
         <KeyboardAvoidingView
           style={styles.flex}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         >
           <ScrollView
             contentContainerStyle={styles.scroll}
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
+            automaticallyAdjustKeyboardInsets={true}
           >
             <View style={styles.brand}>
               <Image

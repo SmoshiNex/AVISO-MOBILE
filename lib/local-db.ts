@@ -216,6 +216,12 @@ export async function getUnsyncedHazardLogs(): Promise<LocalHazardLog[]> {
   return rows.map(rowToHazardLog);
 }
 
+// Removes all locally-synced records so pullFromBackend can replace them with
+// authoritative backend data. Unsynced (pending) records are never touched.
+export async function clearSyncedHazardLogs(): Promise<void> {
+  await getDb().runAsync('DELETE FROM hazard_logs WHERE synced = 1');
+}
+
 export async function markHazardLogSynced(localId: number, remoteId: number): Promise<void> {
   await getDb().runAsync(
     `UPDATE hazard_logs SET synced = 1, remote_id = ? WHERE id = ?`,
