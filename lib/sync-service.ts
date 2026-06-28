@@ -8,6 +8,7 @@ import {
   getUnsyncedHazardLogs,
   markHazardLogSynced,
   reconcileHazardLogSynced,
+  clearSyncedHazardLogs,
   getUnsyncedCrashEvents,
   markCrashEventSynced,
   upsertContact,
@@ -18,25 +19,29 @@ let syncInProgress = false;
 let lastPullMs = 0;
 const PULL_COOLDOWN_MS = 60_000;
 
-export async function syncPendingData(): Promise<void> {
-  if (syncInProgress) return;
+export async function syncPendingData(): Promise<{ synced: number }> {
+  if (syncInProgress) return { synced: 0 };
 
   const state = await Network.getNetworkStateAsync();
-  if (!state.isConnected || !state.isInternetReachable) return;
+  if (state.isConnected !== true || state.isInternetReachable === false) return { synced: 0 };
 
   syncInProgress = true;
+  let synced = 0;
   try {
-    await Promise.all([syncHazardLogs(), syncCrashEvents()]);
+    const [hazardCount] = await Promise.all([syncHazardLogs(), syncCrashEvents()]);
+    synced = hazardCount;
   } finally {
     syncInProgress = false;
   }
+  return { synced };
 }
 
-async function syncHazardLogs(): Promise<void> {
+async function syncHazardLogs(): Promise<number> {
   const logs = await getUnsyncedHazardLogs();
-  if (logs.length === 0) return;
+  if (logs.length === 0) return 0;
 
   const riderCode = await SecureStore.getItemAsync('rider_code') ?? '';
+  let count = 0;
 
   for (const log of logs) {
     try {
@@ -55,11 +60,13 @@ async function syncHazardLogs(): Promise<void> {
       const remoteId = (response as any)?.data?.id;
       if (remoteId) {
         await markHazardLogSynced(log.id, remoteId);
+        count++;
       }
     } catch {
       // Network failure — leave unsynced, will retry on next call
     }
   }
+  return count;
 }
 
 async function syncCrashEvents(): Promise<void> {
@@ -125,9 +132,12 @@ export async function pullFromBackend(force = false): Promise<void> {
       }
     }
 
-    // Pull rider's own hazard logs — reconcile existing unsynced local records first
-    // to avoid duplicate rows and fix cloud-offline icons for already-synced detections
+    // Pull rider's own hazard logs.
+    // Clear all locally-synced records first so they are replaced with authoritative
+    // backend data. Unsynced (pending upload) records are preserved and reconciled
+    // against the backend list to mark them synced if the server already has them.
     const logs: any[] = await api.get('/rider/hazard-logs');
+    await clearSyncedHazardLogs();
     for (const log of logs) {
       const reconciled = await reconcileHazardLogSynced(log.detected_at, log.type, log.id);
       if (!reconciled) {

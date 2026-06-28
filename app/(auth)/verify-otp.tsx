@@ -1,4 +1,4 @@
-﻿import { useRef, useState, useEffect } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import Toast from 'react-native-toast-message';
 import {
   ActivityIndicator,
@@ -60,12 +60,9 @@ export default function VerifyOtpScreen() {
     }
     setLoading(true);
     try {
-      const res = await api.post<VerifyResponse>('/rider/auth/verify-otp', { email, otp });
-      await SecureStore.setItemAsync('rider_token', res.token);
-      await SecureStore.setItemAsync('rider_user', JSON.stringify(res.user));
-      await SecureStore.setItemAsync('rider_code', res.user.username ?? '');
-      pullFromBackend().catch(() => {});
-      router.replace('/(rider)/home');
+      await api.post<VerifyResponse>('/rider/auth/verify-otp', { email, otp });
+      Toast.show({ type: 'success', text1: 'Verification Successful', text2: 'Please log in with your credentials.' });
+      router.replace({ pathname: '/(auth)/login', params: { email } });
     } catch (err: any) {
       Toast.show({ type: 'error', text1: 'Verification Failed', text2: err?.message ?? 'Invalid or expired code.' });
     } finally {

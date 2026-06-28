@@ -1,4 +1,4 @@
-﻿import { useState } from 'react';
+import { useState, useRef } from 'react';
 import Toast from 'react-native-toast-message';
 import {
   ActivityIndicator,
@@ -39,6 +39,17 @@ export default function SignupScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
+  const [showTerms, setShowTerms] = useState(false);
+
+  const lastNameRef = useRef<TextInput>(null);
+  const middleNameRef = useRef<TextInput>(null);
+  const usernameRef = useRef<TextInput>(null);
+  const emailRef = useRef<TextInput>(null);
+  const contactRef = useRef<TextInput>(null);
+  const passwordRef = useRef<TextInput>(null);
+  const confirmPasswordRef = useRef<TextInput>(null);
+  const streetRef = useRef<TextInput>(null);
 
   // Address (optional, locked to Zamboanga City)
   const [barangayCode,       setBarangayCode]       = useState('');
@@ -49,8 +60,12 @@ export default function SignupScreen() {
   const { barangays, loading: loadingBarangays } = useAddressCascade();
 
   async function handleSignup() {
-    if (!firstName.trim() || !lastName.trim() || !username.trim() || !email.trim() || !contactDigits.trim() || !password || !passwordConfirmation) {
+    if (!firstName.trim() || !lastName.trim() || !username.trim() || !email.trim() || !contactDigits.trim() || !password || !passwordConfirmation || !barangayCode || !streetInput.trim()) {
       Toast.show({ type: 'error', text1: 'Missing Fields', text2: 'Please fill in all required fields.' });
+      return;
+    }
+    if (!agreedToTerms) {
+      Toast.show({ type: 'error', text1: 'Terms Required', text2: 'You must agree to the Terms and Conditions to proceed.' });
       return;
     }
     if (username.trim().length < 3) {
@@ -76,13 +91,11 @@ export default function SignupScreen() {
         contact_number: '+63' + contactDigits.trim(),
         password,
         password_confirmation: passwordConfirmation,
-        ...(barangayCode ? {
-          barangay_id: barangayCode,
-          province_id: ZAMBOANGA_PROVINCE_ID,
-          city_id:     ZAMBOANGA_CITY_ID,
-          region_id:   ZAMBOANGA_REGION_ID,
-        } : {}),
-        ...(streetInput.trim() ? { street: streetInput.trim() } : {}),
+        barangay_id: barangayCode,
+        province_id: ZAMBOANGA_PROVINCE_ID,
+        city_id:     ZAMBOANGA_CITY_ID,
+        region_id:   ZAMBOANGA_REGION_ID,
+        street:      streetInput.trim(),
       });
       router.push({ pathname: '/(auth)/verify-otp', params: { email: email.trim() } });
     } catch (err: any) {
@@ -98,12 +111,13 @@ export default function SignupScreen() {
       <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
         <KeyboardAvoidingView
           style={styles.flex}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         >
           <ScrollView
             contentContainerStyle={styles.scroll}
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
+            automaticallyAdjustKeyboardInsets={true}
           >
             <View style={styles.brand}>
               <Image
@@ -128,6 +142,8 @@ export default function SignupScreen() {
                     placeholderTextColor="#BBBBBB"
                     autoCapitalize="words"
                     returnKeyType="next"
+                    onSubmitEditing={() => lastNameRef.current?.focus()}
+                    blurOnSubmit={false}
                     keyboardAppearance="light"
                     underlineColorAndroid="transparent"
                   />
@@ -142,6 +158,9 @@ export default function SignupScreen() {
                     placeholderTextColor="#BBBBBB"
                     autoCapitalize="words"
                     returnKeyType="next"
+                    ref={lastNameRef}
+                    onSubmitEditing={() => middleNameRef.current?.focus()}
+                    blurOnSubmit={false}
                     keyboardAppearance="light"
                     underlineColorAndroid="transparent"
                   />
@@ -162,6 +181,9 @@ export default function SignupScreen() {
                   placeholderTextColor="#BBBBBB"
                   autoCapitalize="words"
                   returnKeyType="next"
+                  ref={middleNameRef}
+                  onSubmitEditing={() => usernameRef.current?.focus()}
+                  blurOnSubmit={false}
                   keyboardAppearance="light"
                   underlineColorAndroid="transparent"
                 />
@@ -182,6 +204,9 @@ export default function SignupScreen() {
                     autoCapitalize="none"
                     autoCorrect={false}
                     returnKeyType="next"
+                    ref={usernameRef}
+                    onSubmitEditing={() => emailRef.current?.focus()}
+                    blurOnSubmit={false}
                     keyboardAppearance="light"
                     underlineColorAndroid="transparent"
                   />
@@ -200,6 +225,9 @@ export default function SignupScreen() {
                   autoCapitalize="none"
                   autoCorrect={false}
                   returnKeyType="next"
+                  ref={emailRef}
+                  onSubmitEditing={() => contactRef.current?.focus()}
+                  blurOnSubmit={false}
                   keyboardAppearance="light"
                   underlineColorAndroid="transparent"
                 />
@@ -219,6 +247,9 @@ export default function SignupScreen() {
                     placeholderTextColor="#BBBBBB"
                     keyboardType="number-pad"
                     returnKeyType="next"
+                    ref={contactRef}
+                    onSubmitEditing={() => passwordRef.current?.focus()}
+                    blurOnSubmit={false}
                     keyboardAppearance="light"
                     underlineColorAndroid="transparent"
                     maxLength={10}
@@ -238,6 +269,9 @@ export default function SignupScreen() {
                     secureTextEntry={!showPassword}
                     autoCapitalize="none"
                     returnKeyType="next"
+                    ref={passwordRef}
+                    onSubmitEditing={() => confirmPasswordRef.current?.focus()}
+                    blurOnSubmit={false}
                     keyboardAppearance="light"
                     underlineColorAndroid="transparent"
                   />
@@ -288,8 +322,10 @@ export default function SignupScreen() {
                     placeholderTextColor="#BBBBBB"
                     secureTextEntry={!showConfirm}
                     autoCapitalize="none"
-                    returnKeyType="done"
-                    onSubmitEditing={handleSignup}
+                    returnKeyType="next"
+                    ref={confirmPasswordRef}
+                    onSubmitEditing={() => streetRef.current?.focus()}
+                    blurOnSubmit={false}
                     keyboardAppearance="light"
                     underlineColorAndroid="transparent"
                   />
@@ -307,13 +343,26 @@ export default function SignupScreen() {
                     </Pressable>
                   )}
                 </View>
+                {passwordConfirmation.length > 0 && (
+                  <View style={styles.checker}>
+                    <View style={styles.checkerRow}>
+                      <Ionicons
+                        name={password === passwordConfirmation ? 'checkmark-circle' : 'close-circle'}
+                        size={14}
+                        color={password === passwordConfirmation ? '#22C55E' : '#EF4444'}
+                      />
+                      <Text style={[styles.checkerText, { color: password === passwordConfirmation ? '#22C55E' : '#EF4444' }]}>
+                        {password === passwordConfirmation ? 'Passwords match' : 'Passwords do not match'}
+                      </Text>
+                    </View>
+                  </View>
+                )}
               </View>
 
-              {/* Address (optional, locked to Zamboanga City) */}
+              {/* Address (locked to Zamboanga City) */}
               <View style={styles.field}>
                 <Text style={styles.label}>
-                  Address{' '}
-                  <Text style={styles.optional}>(optional)</Text>
+                  Address
                 </Text>
 
                 {/* Locked city label */}
@@ -333,7 +382,7 @@ export default function SignupScreen() {
                   <Text style={{ color: barangayCode ? '#111111' : '#BBBBBB', fontFamily: 'JetBrainsMono_400Regular', fontSize: 15 }}>
                     {loadingBarangays
                       ? 'Loading barangays…'
-                      : (barangays.find(b => b.code === barangayCode)?.name ?? 'Select barangay (optional)')}
+                      : (barangays.find(b => b.code === barangayCode)?.name ?? 'Select barangay')}
                   </Text>
                   <Ionicons name="chevron-down" size={16} color="#888888" />
                 </TouchableOpacity>
@@ -343,20 +392,44 @@ export default function SignupScreen() {
                   style={styles.input}
                   value={streetInput}
                   onChangeText={setStreetInput}
-                  placeholder="Street / House No. (optional)"
+                  placeholder="Street / House No."
                   placeholderTextColor="#BBBBBB"
                   autoCapitalize="words"
-                  returnKeyType="next"
+                  returnKeyType="done"
+                  ref={streetRef}
+                  onSubmitEditing={handleSignup}
                   keyboardAppearance="light"
                   underlineColorAndroid="transparent"
                   maxLength={255}
                 />
               </View>
 
+              {/* Terms Checkbox */}
+              <View style={styles.termsRow}>
+                <Pressable
+                  style={[styles.checkbox, agreedToTerms && styles.checkboxActive]}
+                  onPress={() => {
+                    if (!agreedToTerms) {
+                      setShowTerms(true);
+                    } else {
+                      setAgreedToTerms(false);
+                    }
+                  }}
+                >
+                  {agreedToTerms && <Ionicons name="checkmark" size={14} color="#FFFFFF" />}
+                </Pressable>
+                <Text style={styles.termsText}>
+                  I agree to the{' '}
+                  <Text style={styles.termsLink} onPress={() => setShowTerms(true)}>
+                    Terms & Conditions and Privacy Policy
+                  </Text>
+                </Text>
+              </View>
+
               <Pressable
-                style={[styles.button, loading && styles.buttonDisabled]}
+                style={[styles.button, (!agreedToTerms || loading) && styles.buttonDisabled]}
                 onPress={handleSignup}
-                disabled={loading}
+                disabled={!agreedToTerms || loading}
               >
                 {loading ? (
                   <ActivityIndicator color="#FFFFFF" />
@@ -423,6 +496,66 @@ export default function SignupScreen() {
                 }
               />
             )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* Terms Modal */}
+      <Modal
+        visible={showTerms}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowTerms(false)}
+      >
+        <View style={styles.termsRoot}>
+          <View style={styles.termsHeader}>
+            <Text style={styles.termsTitle}>Terms & Privacy Policy</Text>
+            <Pressable onPress={() => setShowTerms(false)} hitSlop={8} style={styles.termsCloseBtn}>
+              <Ionicons name="close" size={24} color="#111111" />
+            </Pressable>
+          </View>
+          <ScrollView style={styles.termsScroll} contentContainerStyle={{ paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
+            <Text style={styles.termsContentTitle}>Data Collection and Usage</Text>
+            <Text style={styles.termsContentText}>
+              Aviso is designed to map and log road hazards in real-time. To make this possible, our application collects specific data from your edge device while you ride:
+              {'\n\n'}• <Text style={{ fontFamily: 'JetBrainsMono_600SemiBold' }}>Camera Data:</Text> Our system processes real-time video feeds from your device to detect road hazards (such as potholes, road excavations, barriers, traffic lights, and traffic signs).
+              {'\n\n'}• <Text style={{ fontFamily: 'JetBrainsMono_600SemiBold' }}>Hazard Logs:</Text> When a hazard is detected, the system records the hazard type, timestamp, and a confidence score. This data is synced to our secure cloud servers to update the global Admin Hazard Logs.
+            </Text>
+
+            <Text style={styles.termsContentTitle}>Location Tracking</Text>
+            <Text style={styles.termsContentText}>
+              • <Text style={{ fontFamily: 'JetBrainsMono_600SemiBold' }}>GPS Data:</Text> To accurately map detected hazards, Aviso requires continuous access to your device's location services (GPS) while the app is actively running or tracking a ride.
+              {'\n\n'}• <Text style={{ fontFamily: 'JetBrainsMono_600SemiBold' }}>Privacy Guarantee:</Text> Your location data is strictly tied to detected road hazards. We do not use your location data to track your personal whereabouts for commercial purposes or share it with third-party advertisers.
+            </Text>
+
+            <Text style={styles.termsContentTitle}>User Accounts and Security</Text>
+            <Text style={styles.termsContentText}>
+              • You are responsible for maintaining the confidentiality of your account credentials (email, username, and password).
+              {'\n\n'}• You agree to provide accurate and complete information during signup.
+              {'\n\n'}• Administrative accounts hold the right to suspend or delete your account if you violate these terms or tamper with the application. For your privacy, administrators cannot view or modify your password.
+            </Text>
+
+            <Text style={styles.termsContentTitle}>Safety Disclaimer</Text>
+            <Text style={styles.termsContentText}>
+              • <Text style={{ fontFamily: 'JetBrainsMono_600SemiBold' }}>Not a Substitute for Safe Driving:</Text> Aviso is a supplementary warning system using text-to-speech (TTS) to announce hazards. It is not a substitute for attentive driving. You must always keep your eyes on the road and obey all traffic laws.
+              {'\n\n'}• We are not liable for any accidents, damages, or injuries that occur while using the application.
+            </Text>
+
+            <Text style={styles.termsContentTitle}>Changes to These Terms</Text>
+            <Text style={styles.termsContentText}>
+              We reserve the right to update these Terms and Conditions at any time. Continued use of the application after changes implies your acceptance of the updated terms.
+            </Text>
+          </ScrollView>
+          <View style={styles.termsFooter}>
+            <Pressable 
+              style={styles.button} 
+              onPress={() => {
+                setAgreedToTerms(true);
+                setShowTerms(false);
+              }}
+            >
+              <Text style={styles.buttonText}>I Understand and Agree</Text>
+            </Pressable>
           </View>
         </View>
       </Modal>
@@ -589,5 +722,84 @@ const styles = StyleSheet.create({
     fontFamily: 'JetBrainsMono_400Regular',
     fontSize: 12,
     lineHeight: 18,
+  },
+  termsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 20,
+    marginTop: 12,
+    paddingHorizontal: 4,
+    gap: 12,
+  },
+  checkbox: {
+    width: 20,
+    height: 20,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: '#AAAAAA',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFFFFF',
+  },
+  checkboxActive: {
+    borderColor: '#0274DF',
+    backgroundColor: '#0274DF',
+  },
+  termsText: {
+    fontFamily: 'JetBrainsMono_400Regular',
+    fontSize: 13,
+    color: '#6B6B6B',
+    flex: 1,
+    lineHeight: 18,
+  },
+  termsLink: {
+    fontFamily: 'JetBrainsMono_600SemiBold',
+    color: '#0274DF',
+  },
+  termsRoot: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    paddingTop: Platform.OS === 'ios' ? 44 : 20,
+  },
+  termsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0F0F0',
+  },
+  termsTitle: {
+    fontFamily: 'JetBrainsMono_700Bold',
+    fontSize: 18,
+    color: '#111111',
+  },
+  termsCloseBtn: {
+    padding: 4,
+    marginRight: -4,
+  },
+  termsScroll: {
+    flex: 1,
+    padding: 20,
+  },
+  termsContentTitle: {
+    fontFamily: 'JetBrainsMono_700Bold',
+    fontSize: 16,
+    color: '#111111',
+    marginTop: 24,
+    marginBottom: 12,
+  },
+  termsContentText: {
+    fontFamily: 'JetBrainsMono_400Regular',
+    fontSize: 14,
+    color: '#444444',
+    lineHeight: 22,
+  },
+  termsFooter: {
+    padding: 20,
+    borderTopWidth: 1,
+    borderTopColor: '#F0F0F0',
+    backgroundColor: '#FFFFFF',
   },
 });
