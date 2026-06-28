@@ -17,7 +17,9 @@ import { useThemeColor } from '@/hooks/use-theme-color';
 import { useTrip } from '@/hooks/use-trip';
 import { DemoDetectionSource } from '@/lib/demo-detection-source';
 import { announceDetection, stopAllSpeech } from '@/lib/voice-queue';
-import { saveHazardLog, incrementTripHazards } from '@/lib/local-db';
+import { saveHazardLog, incrementTripHazards, markHazardLogSynced } from '@/lib/local-db';
+import { api } from '@/lib/api-client';
+import * as SecureStore from 'expo-secure-store';
 import { resolveArea } from '@/lib/area-resolver';
 import { HAZARD_COLORS, HAZARD_WARNINGS } from '@/constants/hazards';
 import { CRASH_G_THRESHOLD, CRASH_ANGULAR_THRESHOLD } from '@/constants/detections';
@@ -42,6 +44,7 @@ export default function CameraScreen() {
   const { trip, isActive, startTrip, endTrip } = useTrip();
   const warningTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const detectionClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const riderCodeRef = useRef<string>('');
   const primary = useThemeColor({}, 'primary');
 
   const handleDetections = useCallback(async (results: DetectionResult[]) => {
@@ -70,7 +73,9 @@ export default function CameraScreen() {
           if (location) {
             const { latitude, longitude } = location.coords;
             const area = resolveArea(latitude, longitude);
-            await saveHazardLog({
+            const detected_at = new Date().toISOString();
+
+            const localId = await saveHazardLog({
               trip_id: trip?.id,
               type: result.type,
               confidence: result.confidence,
@@ -78,13 +83,29 @@ export default function CameraScreen() {
               latitude,
               longitude,
               area,
-              detected_at: new Date().toISOString(),
+              detected_at,
               synced: false,
             });
             if (trip?.id) await incrementTripHazards(trip.id);
+
+            // Fire-and-forget POST — admin sees the detection in <500ms.
+            // On network failure the batch sync (30s) picks it up automatically.
+            api.post('/rider/hazard-logs', {
+              type:       result.type,
+              latitude,
+              longitude,
+              confidence: result.confidence,
+              distance:   result.distance ?? null,
+              area,
+              rider_code: riderCodeRef.current,
+              detected_at,
+            }).then((res: any) => {
+              const remoteId = res?.data?.id;
+              if (remoteId) markHazardLogSynced(localId, remoteId).catch(() => {});
+            }).catch(() => {});
           }
         } catch {
-          // Location unavailable — still log without coords
+          // Location unavailable — skip logging
         }
       }
 
@@ -103,6 +124,10 @@ export default function CameraScreen() {
       }
     }
   }, [trip, isActive]);
+
+  useEffect(() => {
+    SecureStore.getItemAsync('rider_code').then((v) => { if (v) riderCodeRef.current = v; });
+  }, []);
 
   useEffect(() => {
     if (!isActive) {

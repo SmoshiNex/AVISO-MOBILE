@@ -7,6 +7,7 @@ import {
   saveHazardLog,
   getUnsyncedHazardLogs,
   markHazardLogSynced,
+  reconcileHazardLogSynced,
   getUnsyncedCrashEvents,
   markCrashEventSynced,
   upsertContact,
@@ -51,8 +52,9 @@ async function syncHazardLogs(): Promise<void> {
         detected_at: log.detected_at,
       });
 
-      if (response?.id) {
-        await markHazardLogSynced(log.id, response.id);
+      const remoteId = (response as any)?.data?.id;
+      if (remoteId) {
+        await markHazardLogSynced(log.id, remoteId);
       }
     } catch {
       // Network failure — leave unsynced, will retry on next call
@@ -123,20 +125,24 @@ export async function pullFromBackend(force = false): Promise<void> {
       }
     }
 
-    // Pull community hazard logs (all riders — for the area hazard map)
+    // Pull rider's own hazard logs — reconcile existing unsynced local records first
+    // to avoid duplicate rows and fix cloud-offline icons for already-synced detections
     const logs: any[] = await api.get('/rider/hazard-logs');
     for (const log of logs) {
-      await saveHazardLog({
-        remote_id:   log.id,
-        type:        log.type,
-        confidence:  parseFloat(String(log.confidence)) / 100,
-        distance:    log.distance ? parseFloat(String(log.distance)) : undefined,
-        latitude:    parseFloat(String(log.latitude)),
-        longitude:   parseFloat(String(log.longitude)),
-        area:        log.area,
-        detected_at: log.detected_at,
-        synced:      true,
-      });
+      const reconciled = await reconcileHazardLogSynced(log.detected_at, log.type, log.id);
+      if (!reconciled) {
+        await saveHazardLog({
+          remote_id:   log.id,
+          type:        log.type,
+          confidence:  parseFloat(String(log.confidence)) / 100,
+          distance:    log.distance ? parseFloat(String(log.distance)) : undefined,
+          latitude:    parseFloat(String(log.latitude)),
+          longitude:   parseFloat(String(log.longitude)),
+          area:        log.area,
+          detected_at: log.detected_at,
+          synced:      true,
+        });
+      }
     }
     // Pull emergency contacts so SOS can reach them even on fresh install
     const contacts: any[] = await api.get('/rider/emergency-contacts');
