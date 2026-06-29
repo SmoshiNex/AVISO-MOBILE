@@ -49,3 +49,7 @@ app-example
 # Local Claude instruction files (machine-specific, not for repo)
 CLAUDE.md
 AGENTS.md
+
+# Markdown files — keep local only, README is the only exception
+*.md
+!README.md
