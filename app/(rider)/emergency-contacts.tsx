@@ -26,7 +26,7 @@ import { api } from '@/lib/api-client';
 import type { LocalEmergencyContact } from '@/types';
 import { styles } from '@/styles/emergency-contacts.style';
 
-type AddModalData = { name: string; relationship: string; contact_number: string };
+type AddModalData = { name: string; relationship: string };
 
 function normalizePhilippineNumber(raw: string): string {
   // Strip everything except digits and a leading +
@@ -38,6 +38,14 @@ function normalizePhilippineNumber(raw: string): string {
   if (/^9\d{9}$/.test(stripped))  return '+63' + stripped;  // 9XXXXXXXXX (10 digits) → +639XXXXXXXXX
 
   return stripped || raw.trim(); // fallback — return cleaned string
+}
+
+// Local 10-digit part only (e.g. "9171234567"), regardless of how the
+// source number was formatted — used to pre-fill the +63-prefixed input.
+function extractLocalDigits(raw: string): string {
+  const normalized = normalizePhilippineNumber(raw);
+  const digits = normalized.startsWith('+63') ? normalized.slice(3) : normalized.replace(/\D/g, '');
+  return digits.replace(/\D/g, '').slice(0, 10);
 }
 
 export default function EmergencyContactsScreen() {
@@ -55,8 +63,16 @@ export default function EmergencyContactsScreen() {
   const [contacts, setContacts] = useState<LocalEmergencyContact[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
-  const [addForm, setAddForm] = useState<AddModalData>({ name: '', relationship: '', contact_number: '' });
+  const [addForm, setAddForm] = useState<AddModalData>({ name: '', relationship: '' });
+  // Just the 10 digits after +63 — the prefix is always fixed and shown
+  // separately, so the user only ever types "9XX XXX XXXX".
+  const [phoneDigits, setPhoneDigits] = useState('');
   const [saving, setSaving] = useState(false);
+
+  const resetAddForm = useCallback(() => {
+    setAddForm({ name: '', relationship: '' });
+    setPhoneDigits('');
+  }, []);
 
   // Contact picker state
   const [showContactPicker, setShowContactPicker] = useState(false);
@@ -108,18 +124,15 @@ export default function EmergencyContactsScreen() {
 
   const selectPhoneContact = (contact: Contacts.Contact) => {
     const raw = contact.phoneNumbers?.[0]?.number ?? '';
-    setAddForm({
-      name: contact.name ?? '',
-      relationship: '',
-      contact_number: normalizePhilippineNumber(raw),
-    });
+    setAddForm({ name: contact.name ?? '', relationship: '' });
+    setPhoneDigits(extractLocalDigits(raw));
     setContactSearch('');
     setShowContactPicker(false);
     setShowAddModal(true);
   };
 
   const handleSaveContact = async () => {
-    if (!addForm.name.trim() || !addForm.contact_number.trim()) {
+    if (!addForm.name.trim() || !phoneDigits.trim()) {
       Toast.show({ type: 'error', text1: 'Name and phone number are required' });
       return;
     }
@@ -129,7 +142,7 @@ export default function EmergencyContactsScreen() {
       const response: any = await api.post('/rider/emergency-contacts', {
         name: addForm.name.trim(),
         relationship: addForm.relationship.trim() || undefined,
-        contact_number: normalizePhilippineNumber(addForm.contact_number),
+        contact_number: `+63${phoneDigits}`,
       });
 
       await upsertContact({
@@ -143,7 +156,7 @@ export default function EmergencyContactsScreen() {
       const updated = await getContacts();
       setContacts(updated);
       setShowAddModal(false);
-      setAddForm({ name: '', relationship: '', contact_number: '' });
+      resetAddForm();
       Toast.show({ type: 'success', text1: 'Contact added!' });
     } catch {
       Toast.show({ type: 'error', text1: 'Could not save contact' });
@@ -225,7 +238,7 @@ export default function EmergencyContactsScreen() {
       {/* Header — single "+" button */}
       <View style={[styles.header, { borderBottomColor: border }]}>
         <Text style={[styles.headerTitle, { color: text }]}>Emergency Contacts</Text>
-        <TouchableOpacity onPress={() => setShowAddModal(true)} style={styles.headerBtn}>
+        <TouchableOpacity onPress={() => { resetAddForm(); setShowAddModal(true); }} style={styles.headerBtn}>
           <Ionicons name="add-circle-outline" size={22} color={primary} />
         </TouchableOpacity>
       </View>
@@ -252,7 +265,7 @@ export default function EmergencyContactsScreen() {
             </Text>
             <TouchableOpacity
               style={[styles.emptyBtn, { backgroundColor: actionBg }]}
-              onPress={() => setShowAddModal(true)}
+              onPress={() => { resetAddForm(); setShowAddModal(true); }}
             >
               <Text style={[styles.emptyBtnText, { color: actionText }]}>Add Contact</Text>
             </TouchableOpacity>
@@ -316,20 +329,25 @@ export default function EmergencyContactsScreen() {
 
               <View style={styles.inputGroup}>
                 <Text style={[styles.inputLabel, { color: textSecondary }]}>Phone Number *</Text>
-                <TextInput
-                  style={[styles.input, { backgroundColor: backgroundElement, color: text, borderColor: border }]}
-                  value={addForm.contact_number}
-                  onChangeText={(v) => setAddForm((f) => ({ ...f, contact_number: v }))}
-                  placeholder="+63 9XX XXX XXXX"
-                  placeholderTextColor={textSecondary}
-                  keyboardType="phone-pad"
-                />
+                <View style={[styles.input, styles.phoneInputRow, { backgroundColor: backgroundElement, borderColor: border }]}>
+                  <Text style={[styles.phonePrefix, { color: text }]}>+63</Text>
+                  <View style={[styles.phoneDivider, { backgroundColor: border }]} />
+                  <TextInput
+                    style={[styles.phoneSuffixInput, { color: text }]}
+                    value={phoneDigits}
+                    onChangeText={(v) => setPhoneDigits(v.replace(/\D/g, '').slice(0, 10))}
+                    placeholder="9XX XXX XXXX"
+                    placeholderTextColor={textSecondary}
+                    keyboardType="number-pad"
+                    maxLength={10}
+                  />
+                </View>
               </View>
 
               <View style={styles.modalActions}>
                 <TouchableOpacity
                   style={[styles.modalCancelBtn, { borderColor: border }]}
-                  onPress={() => { setShowAddModal(false); setAddForm({ name: '', relationship: '', contact_number: '' }); }}
+                  onPress={() => { setShowAddModal(false); resetAddForm(); }}
                 >
                   <Text style={[styles.modalCancelText, { color: textSecondary }]}>Cancel</Text>
                 </TouchableOpacity>

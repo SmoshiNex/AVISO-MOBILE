@@ -97,6 +97,20 @@ export const styles = StyleSheet.create({
     fontFamily: Fonts.regular,
     minHeight: 44,
   },
+  phoneInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 0,
+  },
+  phonePrefix: { fontSize: 15, fontFamily: Fonts.semibold },
+  phoneDivider: { width: 1, height: 20, marginHorizontal: 10 },
+  phoneSuffixInput: {
+    flex: 1,
+    fontSize: 15,
+    fontFamily: Fonts.regular,
+    paddingVertical: 12,
+  },
   modalActions: { flexDirection: 'row', gap: 12, marginTop: 4 },
   modalCancelBtn: {
     flex: 1,

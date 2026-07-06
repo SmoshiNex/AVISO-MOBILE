@@ -1,14 +1,22 @@
-import { useRef, useState, useCallback, useEffect } from "react";
+import { useRef, useState, useCallback, useEffect, useMemo } from "react";
 import {
     View,
     Text,
     TouchableOpacity,
     StyleSheet,
+    Modal,
     useWindowDimensions,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router, useFocusEffect } from "expo-router";
 import { CameraView, useCameraPermissions } from "expo-camera";
+import {
+    UvcCamera,
+    CameraErrorCodes,
+    type UvcCameraHandle,
+    type DeviceInfo as UvcDeviceInfo,
+    type CameraError as UvcCameraError,
+} from "@kartik512/react-native-uvc-camera";
 import * as Location from "expo-location";
 import { Accelerometer, Gyroscope } from "expo-sensors";
 import { Ionicons } from "@expo/vector-icons";
@@ -27,11 +35,19 @@ import {
     CRASH_G_THRESHOLD,
     CRASH_ANGULAR_THRESHOLD,
 } from "@/constants/detections";
+import { classifyRideState, type RideState } from "@/lib/ride-state-classifier";
 import type { DetectionResult } from "@/types";
 import roadSigns from "@/assets/data/road_sign_instructions.json";
 import { styles } from "@/styles/camera.style";
 
 type SourceMode = "native" | "otg";
+
+const RIDE_STATE_META: Record<RideState, { label: string; color: string; range: string }> = {
+    normal: { label: "Normal Riding", color: "#22C55E", range: "< 1.3g" },
+    hard_braking: { label: "Hard Braking", color: "#F59E0B", range: "1.3–2.5g, stable (low rotation)" },
+    bump: { label: "Bump / Pothole", color: "#0274DF", range: "1.3–2.5g, with rotation" },
+    crash: { label: "Crash", color: "#EF4444", range: "≥ 2.5g + strong rotation" },
+};
 
 const detectionSource = new DemoDetectionSource(3500);
 const LOG_COOLDOWN_MS = 8000;
@@ -39,11 +55,19 @@ const lastLoggedAt: Record<string, number> = {};
 
 export default function CameraScreen() {
     const [permission, requestPermission] = useCameraPermissions();
-    const [sourceMode, setSourceMode] = useState<SourceMode>("native");
+    const [sourceMode, setSourceMode] = useState<SourceMode>("otg");
+    const uvcCameraRef = useRef<UvcCameraHandle>(null);
+    const [uvcDevice, setUvcDevice] = useState<UvcDeviceInfo | null>(null);
+    const [uvcDisconnected, setUvcDisconnected] = useState(false);
     const [detections, setDetections] = useState<DetectionResult[]>([]);
     const [warningText, setWarningText] = useState<string | null>(null);
     const [accelMag, setAccelMag] = useState(0);
     const [gyroMag, setGyroMag] = useState(0);
+    const [showLegend, setShowLegend] = useState(false);
+    const rideState = useMemo(
+        () => classifyRideState(accelMag, gyroMag),
+        [accelMag, gyroMag],
+    );
     const { width: screenWidth, height: screenHeight } = useWindowDimensions();
     const { trip, isActive, startTrip, endTrip } = useTrip();
     const warningTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -240,6 +264,26 @@ export default function CameraScreen() {
         }
     }, [startTrip]);
 
+    const handleUvcCameraReady = useCallback((device: UvcDeviceInfo) => {
+        setUvcDevice(device);
+        setUvcDisconnected(false);
+    }, []);
+
+    const handleUvcCameraError = useCallback((cameraError: UvcCameraError) => {
+        // Expected while the rig isn't plugged in yet — not a real error to surface.
+        if (cameraError.code === CameraErrorCodes.NO_DEVICE_FOUND) return;
+        Toast.show({
+            type: "error",
+            text1: "USB Camera Error",
+            text2: cameraError.message,
+        });
+    }, []);
+
+    const handleUvcDeviceDisconnected = useCallback(() => {
+        setUvcDevice(null);
+        setUvcDisconnected(true);
+    }, []);
+
     const handleEndRide = useCallback(async () => {
         Toast.show({ type: "info", text1: "Ending ride..." });
         try {
@@ -287,19 +331,38 @@ export default function CameraScreen() {
             {sourceMode === "native" ? (
                 <CameraView style={StyleSheet.absoluteFill} facing="back" />
             ) : (
-                <View style={[StyleSheet.absoluteFill, styles.otgPlaceholder]}>
-                    <Ionicons
-                        name="hardware-chip-outline"
-                        size={64}
-                        color="#9CA3AF"
+                <>
+                    <UvcCamera
+                        ref={uvcCameraRef}
+                        style={StyleSheet.absoluteFill}
+                        onCameraReady={handleUvcCameraReady}
+                        onCameraError={handleUvcCameraError}
+                        onDeviceDisconnected={handleUvcDeviceDisconnected}
                     />
-                    <Text style={styles.otgText}>
-                        Connect Raspberry Pi via USB OTG
-                    </Text>
-                    <Text style={styles.otgSubtext}>
-                        Hardware camera feed will appear here
-                    </Text>
-                </View>
+                    {!uvcDevice && (
+                        <View
+                            style={[
+                                StyleSheet.absoluteFill,
+                                styles.otgPlaceholder,
+                            ]}
+                        >
+                            <Ionicons
+                                name="hardware-chip-outline"
+                                size={64}
+                                color="#9CA3AF"
+                            />
+                            <Text style={styles.otgText}>
+                                {uvcDisconnected
+                                    ? "USB camera disconnected"
+                                    : "Connect the hazard-detection camera via USB OTG"}
+                            </Text>
+                            <Text style={styles.otgSubtext}>
+                                Plug in the USB webcam — the live feed will
+                                appear automatically
+                            </Text>
+                        </View>
+                    )}
+                </>
             )}
 
             <View style={StyleSheet.absoluteFill} pointerEvents="none">
@@ -421,8 +484,27 @@ export default function CameraScreen() {
                 </TouchableOpacity>
             </SafeAreaView>
 
-            <View style={styles.sensorHud} pointerEvents="none">
-                <Text style={styles.sensorLabel}>G-Force</Text>
+            <View style={styles.sensorHud}>
+                <TouchableOpacity
+                    style={[
+                        styles.stateBadge,
+                        { backgroundColor: RIDE_STATE_META[rideState].color },
+                    ]}
+                    onPress={() => setShowLegend(true)}
+                >
+                    <Text style={styles.stateBadgeText}>
+                        {RIDE_STATE_META[rideState].label}
+                    </Text>
+                    <Ionicons
+                        name="information-circle-outline"
+                        size={14}
+                        color="#fff"
+                    />
+                </TouchableOpacity>
+
+                <Text style={[styles.sensorLabel, { marginTop: 8 }]}>
+                    G-Force
+                </Text>
                 <Text
                     style={[
                         styles.sensorValue,
@@ -451,6 +533,43 @@ export default function CameraScreen() {
                     {gyroMag} rad/s
                 </Text>
             </View>
+
+            <Modal
+                visible={showLegend}
+                animationType="fade"
+                transparent
+                onRequestClose={() => setShowLegend(false)}
+            >
+                <TouchableOpacity
+                    style={styles.legendBackdrop}
+                    activeOpacity={1}
+                    onPress={() => setShowLegend(false)}
+                >
+                    <View style={styles.legendCard}>
+                        <Text style={styles.legendTitle}>Riding States</Text>
+                        {(
+                            Object.keys(RIDE_STATE_META) as RideState[]
+                        ).map((key) => (
+                            <View key={key} style={styles.legendRow}>
+                                <View
+                                    style={[
+                                        styles.legendDot,
+                                        { backgroundColor: RIDE_STATE_META[key].color },
+                                    ]}
+                                />
+                                <View style={{ flex: 1 }}>
+                                    <Text style={styles.legendLabel}>
+                                        {RIDE_STATE_META[key].label}
+                                    </Text>
+                                    <Text style={styles.legendRange}>
+                                        {RIDE_STATE_META[key].range}
+                                    </Text>
+                                </View>
+                            </View>
+                        ))}
+                    </View>
+                </TouchableOpacity>
+            </Modal>
 
             <View style={styles.demoBadge} pointerEvents="none">
                 <Text style={styles.demoBadgeText}>DEMO MODE</Text>
