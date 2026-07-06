@@ -82,6 +82,13 @@
         {
           "photosPermission": "AVISO needs access to your photos to set a profile picture."
         }
+      ],
+      [
+        "react-native-vision-camera",
+        {
+          "cameraPermissionText": "AVISO uses the camera to detect road hazards.",
+          "enableMicrophonePermission": false
+        }
       ]
     ],
     "experiments": {

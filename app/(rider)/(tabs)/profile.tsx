@@ -110,6 +110,12 @@ export default function ProfileScreen() {
   };
 
   const navRows: NavRow[] = [
+    // TEMPORARY — remove once OTG webcam support is confirmed working.
+    {
+      icon: 'hardware-chip-outline',
+      label: 'Dev: Test OTG Camera',
+      onPress: () => router.push('/(rider)/camera-otg-test'),
+    },
     {
       icon: 'people-outline',
       label: 'Emergency Contacts',
