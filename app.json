@@ -95,7 +95,8 @@
         {
           "cameraPermissionText": "AVISO uses the camera to detect road hazards."
         }
-      ]
+      ],
+      "@rnmapbox/maps"
     ],
     "experiments": {
       "typedRoutes": true,

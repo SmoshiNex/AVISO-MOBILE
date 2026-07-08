@@ -7,6 +7,7 @@ import * as Location from 'expo-location';
 import { Ionicons } from '@expo/vector-icons';
 import Toast from 'react-native-toast-message';
 import { sendEmergencyAlert } from '@/lib/emergency-sos';
+import { useTripContext } from '@/contexts/trip-context';
 import { generateJarvisAudio } from '@/lib/openai-tts';
 import { SOS_TEXT, SOS_CACHE_KEY } from '@/constants/sos';
 import { styles } from '@/styles/emergency-alert.style';
@@ -32,6 +33,7 @@ export default function EmergencyAlertScreen() {
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isSentRef = useRef(false);
   const isSendingRef = useRef(false);
+  const { isActive, endTrip } = useTripContext();
 
   // Pulse ring animation — permanent cosmetic loop
   useEffect(() => {
@@ -117,6 +119,13 @@ export default function EmergencyAlertScreen() {
     if (isSendingRef.current || isSentRef.current) return;
     isSendingRef.current = true;
     setSending(true);
+
+    // The ride is over the moment SOS is confirmed — end it now so the rider
+    // has to press Start Ride again, instead of crash detection silently
+    // staying armed on the Camera screen.
+    if (isActive) {
+      endTrip().catch(() => {});
+    }
 
     try {
       const location = await Location.getCurrentPositionAsync({

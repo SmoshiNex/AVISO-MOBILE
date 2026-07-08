@@ -2,8 +2,11 @@ import { useEffect, useState } from "react";
 import { ActivityIndicator, StyleSheet, View } from "react-native";
 import { Redirect } from "expo-router";
 import * as SecureStore from "expo-secure-store";
+import { useThemeColor } from "@/hooks/use-theme-color";
 
 export default function IndexPage() {
+    const background = useThemeColor({}, "background");
+    const tint = useThemeColor({}, "tint");
     const [target, setTarget] = useState<string | null>(null);
 
     useEffect(() => {
@@ -28,8 +31,8 @@ export default function IndexPage() {
 
     if (!target) {
         return (
-            <View style={styles.container}>
-                <ActivityIndicator size="large" />
+            <View style={[styles.container, { backgroundColor: background }]}>
+                <ActivityIndicator size="large" color={tint} />
             </View>
         );
     }
@@ -42,6 +45,5 @@ const styles = StyleSheet.create({
         flex: 1,
         alignItems: "center",
         justifyContent: "center",
-        backgroundColor: "#fff",
     },
 });

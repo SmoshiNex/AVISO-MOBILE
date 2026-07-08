@@ -21,6 +21,8 @@ import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { api } from '@/lib/api-client';
 import { useAddressCascade } from '@/hooks/use-address-cascade';
+import { useThemeColor } from '@/hooks/use-theme-color';
+import { useColorScheme } from '@/hooks/use-color-scheme';
 import type { AddressBarangay } from '@/types';
 
 const ZAMBOANGA_PROVINCE_ID = '09317';
@@ -28,6 +30,20 @@ const ZAMBOANGA_CITY_ID     = '0931700';
 const ZAMBOANGA_REGION_ID   = '09';
 
 export default function SignupScreen() {
+  const background     = useThemeColor({}, 'background');
+  const backgroundElem = useThemeColor({}, 'backgroundElement');
+  const card            = useThemeColor({}, 'card');
+  const text             = useThemeColor({}, 'text');
+  const textSecondary    = useThemeColor({}, 'textSecondary');
+  const placeholder     = useThemeColor({}, 'placeholder');
+  const primary         = useThemeColor({}, 'primary');
+  const border           = useThemeColor({}, 'border');
+  const success          = useThemeColor({}, 'success');
+  const danger            = useThemeColor({}, 'danger');
+  const actionBg        = useThemeColor({}, 'actionBg');
+  const actionText      = useThemeColor({}, 'actionText');
+  const colorScheme = useColorScheme();
+
   const [firstName, setFirstName] = useState('');
   const [middleName, setMiddleName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -106,8 +122,8 @@ export default function SignupScreen() {
   }
 
   return (
-    <View style={styles.root}>
-      <StatusBar barStyle="dark-content" backgroundColor="#F7F7F7" />
+    <View style={[styles.root, { backgroundColor: background }]}>
+      <StatusBar barStyle={colorScheme === 'dark' ? 'light-content' : 'dark-content'} backgroundColor={background} />
       <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
         <KeyboardAvoidingView
           style={styles.flex}
@@ -125,102 +141,102 @@ export default function SignupScreen() {
                 style={styles.logoImg}
                 resizeMode="contain"
               />
-              <Text style={styles.appName}>AVISO</Text>
-              <Text style={styles.tagline}>Create Rider Account</Text>
+              <Text style={[styles.appName, { color: text }]}>AVISO</Text>
+              <Text style={[styles.tagline, { color: textSecondary }]}>Create Rider Account</Text>
             </View>
 
             <View style={styles.form}>
               {/* First + Last name */}
               <View style={styles.row}>
                 <View style={[styles.field, styles.half]}>
-                  <Text style={styles.label}>First name</Text>
+                  <Text style={[styles.label, { color: textSecondary }]}>First name</Text>
                   <TextInput
-                    style={styles.input}
+                    style={[styles.input, { backgroundColor: backgroundElem, color: text }]}
                     value={firstName}
                     onChangeText={setFirstName}
                     placeholder="Juan"
-                    placeholderTextColor="#BBBBBB"
+                    placeholderTextColor={placeholder}
                     autoCapitalize="words"
                     returnKeyType="next"
                     onSubmitEditing={() => lastNameRef.current?.focus()}
                     blurOnSubmit={false}
-                    keyboardAppearance="light"
+                    keyboardAppearance={colorScheme}
                     underlineColorAndroid="transparent"
                   />
                 </View>
                 <View style={[styles.field, styles.half]}>
-                  <Text style={styles.label}>Last name</Text>
+                  <Text style={[styles.label, { color: textSecondary }]}>Last name</Text>
                   <TextInput
-                    style={styles.input}
+                    style={[styles.input, { backgroundColor: backgroundElem, color: text }]}
                     value={lastName}
                     onChangeText={setLastName}
                     placeholder="Dela Cruz"
-                    placeholderTextColor="#BBBBBB"
+                    placeholderTextColor={placeholder}
                     autoCapitalize="words"
                     returnKeyType="next"
                     ref={lastNameRef}
                     onSubmitEditing={() => middleNameRef.current?.focus()}
                     blurOnSubmit={false}
-                    keyboardAppearance="light"
+                    keyboardAppearance={colorScheme}
                     underlineColorAndroid="transparent"
                   />
                 </View>
               </View>
 
-              {/* Middle name â€” optional */}
+              {/* Middle name — optional */}
               <View style={styles.field}>
-                <Text style={styles.label}>
+                <Text style={[styles.label, { color: textSecondary }]}>
                   Middle name{' '}
-                  <Text style={styles.optional}>(optional)</Text>
+                  <Text style={[styles.optional, { color: placeholder }]}>(optional)</Text>
                 </Text>
                 <TextInput
-                  style={styles.input}
+                  style={[styles.input, { backgroundColor: backgroundElem, color: text }]}
                   value={middleName}
                   onChangeText={setMiddleName}
                   placeholder="e.g. Santos"
-                  placeholderTextColor="#BBBBBB"
+                  placeholderTextColor={placeholder}
                   autoCapitalize="words"
                   returnKeyType="next"
                   ref={middleNameRef}
                   onSubmitEditing={() => usernameRef.current?.focus()}
                   blurOnSubmit={false}
-                  keyboardAppearance="light"
+                  keyboardAppearance={colorScheme}
                   underlineColorAndroid="transparent"
                 />
               </View>
 
               <View style={styles.field}>
-                <Text style={styles.label}>Username</Text>
+                <Text style={[styles.label, { color: textSecondary }]}>Username</Text>
                 <View style={styles.inputWrapper}>
-                  <Text style={styles.atSign}>@</Text>
+                  <Text style={[styles.atSign, { color: placeholder }]}>@</Text>
                   <TextInput
-                    style={[styles.input, styles.inputWithAt]}
+                    style={[styles.input, { backgroundColor: backgroundElem, color: text }, styles.inputWithAt]}
                     value={username}
                     onChangeText={(text) =>
                       setUsername(text.replace(/[^a-zA-Z0-9_]/g, '').slice(0, 30))
                     }
                     placeholder="your_username"
-                    placeholderTextColor="#BBBBBB"
+                    placeholderTextColor={placeholder}
                     autoCapitalize="none"
                     autoCorrect={false}
                     returnKeyType="next"
                     ref={usernameRef}
                     onSubmitEditing={() => emailRef.current?.focus()}
                     blurOnSubmit={false}
-                    keyboardAppearance="light"
+                    keyboardAppearance={colorScheme}
                     underlineColorAndroid="transparent"
                   />
                 </View>
               </View>
 
               <View style={styles.field}>
-                <Text style={styles.label}>Email address</Text>
+                <Text style={[styles.label, { color: textSecondary }]}>Email address</Text>
                 <TextInput
-                  style={styles.input}
+                  style={[styles.input, { backgroundColor: backgroundElem, color: text }]}
                   value={email}
                   onChangeText={setEmail}
                   placeholder="rider@example.com"
-                  placeholderTextColor="#BBBBBB"
+                  placeholderTextColor={placeholder}
                   keyboardType="email-address"
                   autoCapitalize="none"
                   autoCorrect={false}
@@ -228,29 +244,29 @@ export default function SignupScreen() {
                   ref={emailRef}
                   onSubmitEditing={() => contactRef.current?.focus()}
                   blurOnSubmit={false}
-                  keyboardAppearance="light"
+                  keyboardAppearance={colorScheme}
                   underlineColorAndroid="transparent"
                 />
               </View>
 
               <View style={styles.field}>
-                <Text style={styles.label}>Contact number</Text>
+                <Text style={[styles.label, { color: textSecondary }]}>Contact number</Text>
                 <View style={styles.phoneRow}>
-                  <View style={styles.phonePrefix}>
-                    <Text style={styles.phonePrefixText}>+63</Text>
+                  <View style={[styles.phonePrefix, { backgroundColor: backgroundElem }]}>
+                    <Text style={[styles.phonePrefixText, { color: textSecondary }]}>+63</Text>
                   </View>
                   <TextInput
-                    style={styles.phoneInput}
+                    style={[styles.phoneInput, { backgroundColor: backgroundElem, color: text }]}
                     value={contactDigits}
                     onChangeText={(text) => setContactDigits(text.replace(/\D/g, '').slice(0, 10))}
                     placeholder="9XXXXXXXXX"
-                    placeholderTextColor="#BBBBBB"
+                    placeholderTextColor={placeholder}
                     keyboardType="number-pad"
                     returnKeyType="next"
                     ref={contactRef}
                     onSubmitEditing={() => passwordRef.current?.focus()}
                     blurOnSubmit={false}
-                    keyboardAppearance="light"
+                    keyboardAppearance={colorScheme}
                     underlineColorAndroid="transparent"
                     maxLength={10}
                   />
@@ -258,21 +274,21 @@ export default function SignupScreen() {
               </View>
 
               <View style={styles.field}>
-                <Text style={styles.label}>Password</Text>
+                <Text style={[styles.label, { color: textSecondary }]}>Password</Text>
                 <View style={styles.inputWrapper}>
                   <TextInput
-                    style={[styles.input, password.length > 0 && styles.inputWithEye]}
+                    style={[styles.input, { backgroundColor: backgroundElem, color: text }, password.length > 0 && styles.inputWithEye]}
                     value={password}
                     onChangeText={setPassword}
                     placeholder="At least 8 characters"
-                    placeholderTextColor="#BBBBBB"
+                    placeholderTextColor={placeholder}
                     secureTextEntry={!showPassword}
                     autoCapitalize="none"
                     returnKeyType="next"
                     ref={passwordRef}
                     onSubmitEditing={() => confirmPasswordRef.current?.focus()}
                     blurOnSubmit={false}
-                    keyboardAppearance="light"
+                    keyboardAppearance={colorScheme}
                     underlineColorAndroid="transparent"
                   />
                   {password.length > 0 && (
@@ -284,7 +300,7 @@ export default function SignupScreen() {
                       <Ionicons
                         name={showPassword ? 'eye-off' : 'eye'}
                         size={18}
-                        color="#888888"
+                        color={textSecondary}
                       />
                     </Pressable>
                   )}
@@ -300,9 +316,9 @@ export default function SignupScreen() {
                         <Ionicons
                           name={rule.met ? 'checkmark-circle' : 'ellipse-outline'}
                           size={14}
-                          color={rule.met ? '#22C55E' : '#AAAAAA'}
+                          color={rule.met ? success : placeholder}
                         />
-                        <Text style={[styles.checkerText, { color: rule.met ? '#22C55E' : '#AAAAAA' }]}>
+                        <Text style={[styles.checkerText, { color: rule.met ? success : placeholder }]}>
                           {rule.label}
                         </Text>
                       </View>
@@ -312,21 +328,21 @@ export default function SignupScreen() {
               </View>
 
               <View style={styles.field}>
-                <Text style={styles.label}>Confirm password</Text>
+                <Text style={[styles.label, { color: textSecondary }]}>Confirm password</Text>
                 <View style={styles.inputWrapper}>
                   <TextInput
-                    style={[styles.input, passwordConfirmation.length > 0 && styles.inputWithEye]}
+                    style={[styles.input, { backgroundColor: backgroundElem, color: text }, passwordConfirmation.length > 0 && styles.inputWithEye]}
                     value={passwordConfirmation}
                     onChangeText={setPasswordConfirmation}
                     placeholder="Repeat your password"
-                    placeholderTextColor="#BBBBBB"
+                    placeholderTextColor={placeholder}
                     secureTextEntry={!showConfirm}
                     autoCapitalize="none"
                     returnKeyType="next"
                     ref={confirmPasswordRef}
                     onSubmitEditing={() => streetRef.current?.focus()}
                     blurOnSubmit={false}
-                    keyboardAppearance="light"
+                    keyboardAppearance={colorScheme}
                     underlineColorAndroid="transparent"
                   />
                   {passwordConfirmation.length > 0 && (
@@ -338,7 +354,7 @@ export default function SignupScreen() {
                       <Ionicons
                         name={showConfirm ? 'eye-off' : 'eye'}
                         size={18}
-                        color="#888888"
+                        color={textSecondary}
                       />
                     </Pressable>
                   )}
@@ -349,9 +365,9 @@ export default function SignupScreen() {
                       <Ionicons
                         name={password === passwordConfirmation ? 'checkmark-circle' : 'close-circle'}
                         size={14}
-                        color={password === passwordConfirmation ? '#22C55E' : '#EF4444'}
+                        color={password === passwordConfirmation ? success : danger}
                       />
-                      <Text style={[styles.checkerText, { color: password === passwordConfirmation ? '#22C55E' : '#EF4444' }]}>
+                      <Text style={[styles.checkerText, { color: password === passwordConfirmation ? success : danger }]}>
                         {password === passwordConfirmation ? 'Passwords match' : 'Passwords do not match'}
                       </Text>
                     </View>
@@ -361,44 +377,44 @@ export default function SignupScreen() {
 
               {/* Address (locked to Zamboanga City) */}
               <View style={styles.field}>
-                <Text style={styles.label}>
+                <Text style={[styles.label, { color: textSecondary }]}>
                   Address
                 </Text>
 
                 {/* Locked city label */}
-                <View style={[styles.input, { justifyContent: 'center', marginBottom: 8 }]}>
-                  <Text style={{ color: '#6B6B6B', fontSize: 13, fontFamily: 'JetBrainsMono_400Regular' }}>
+                <View style={[styles.input, { backgroundColor: backgroundElem, justifyContent: 'center', marginBottom: 8 }]}>
+                  <Text style={{ color: textSecondary, fontSize: 13, fontFamily: 'JetBrainsMono_400Regular' }}>
                     City of Zamboanga, Zamboanga Peninsula
                   </Text>
                 </View>
 
                 {/* Barangay picker */}
                 <TouchableOpacity
-                  style={[styles.input, { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, opacity: loadingBarangays ? 0.6 : 1 }]}
+                  style={[styles.input, { backgroundColor: backgroundElem, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, opacity: loadingBarangays ? 0.6 : 1 }]}
                   onPress={() => { setPickerSearch(''); setShowBarangayPicker(true); }}
                   disabled={loadingBarangays}
                   activeOpacity={0.7}
                 >
-                  <Text style={{ color: barangayCode ? '#111111' : '#BBBBBB', fontFamily: 'JetBrainsMono_400Regular', fontSize: 15 }}>
+                  <Text style={{ color: barangayCode ? text : placeholder, fontFamily: 'JetBrainsMono_400Regular', fontSize: 15 }}>
                     {loadingBarangays
                       ? 'Loading barangays…'
                       : (barangays.find(b => b.code === barangayCode)?.name ?? 'Select barangay')}
                   </Text>
-                  <Ionicons name="chevron-down" size={16} color="#888888" />
+                  <Ionicons name="chevron-down" size={16} color={textSecondary} />
                 </TouchableOpacity>
 
                 {/* Street input */}
                 <TextInput
-                  style={styles.input}
+                  style={[styles.input, { backgroundColor: backgroundElem, color: text }]}
                   value={streetInput}
                   onChangeText={setStreetInput}
                   placeholder="Street / House No."
-                  placeholderTextColor="#BBBBBB"
+                  placeholderTextColor={placeholder}
                   autoCapitalize="words"
                   returnKeyType="done"
                   ref={streetRef}
                   onSubmitEditing={handleSignup}
-                  keyboardAppearance="light"
+                  keyboardAppearance={colorScheme}
                   underlineColorAndroid="transparent"
                   maxLength={255}
                 />
@@ -407,7 +423,7 @@ export default function SignupScreen() {
               {/* Terms Checkbox */}
               <View style={styles.termsRow}>
                 <Pressable
-                  style={[styles.checkbox, agreedToTerms && styles.checkboxActive]}
+                  style={[styles.checkbox, { borderColor: border, backgroundColor: card }, agreedToTerms && { borderColor: primary, backgroundColor: primary }]}
                   onPress={() => {
                     if (!agreedToTerms) {
                       setShowTerms(true);
@@ -416,32 +432,32 @@ export default function SignupScreen() {
                     }
                   }}
                 >
-                  {agreedToTerms && <Ionicons name="checkmark" size={14} color="#FFFFFF" />}
+                  {agreedToTerms && <Ionicons name="checkmark" size={14} color={actionText} />}
                 </Pressable>
-                <Text style={styles.termsText}>
+                <Text style={[styles.termsText, { color: textSecondary }]}>
                   I agree to the{' '}
-                  <Text style={styles.termsLink} onPress={() => setShowTerms(true)}>
+                  <Text style={[styles.termsLink, { color: primary }]} onPress={() => setShowTerms(true)}>
                     Terms & Conditions and Privacy Policy
                   </Text>
                 </Text>
               </View>
 
               <Pressable
-                style={[styles.button, (!agreedToTerms || loading) && styles.buttonDisabled]}
+                style={[styles.button, { backgroundColor: actionBg }, (!agreedToTerms || loading) && styles.buttonDisabled]}
                 onPress={handleSignup}
                 disabled={!agreedToTerms || loading}
               >
                 {loading ? (
-                  <ActivityIndicator color="#FFFFFF" />
+                  <ActivityIndicator color={actionText} />
                 ) : (
-                  <Text style={styles.buttonText}>Create Account</Text>
+                  <Text style={[styles.buttonText, { color: actionText }]}>Create Account</Text>
                 )}
               </Pressable>
 
               <Pressable onPress={() => router.back()} style={styles.linkRow}>
-                <Text style={styles.linkText}>
+                <Text style={[styles.linkText, { color: textSecondary }]}>
                   Already have an account?{' '}
-                  <Text style={styles.linkBold}>Log in</Text>
+                  <Text style={[styles.linkBold, { color: primary }]}>Log in</Text>
                 </Text>
               </Pressable>
             </View>
@@ -457,25 +473,25 @@ export default function SignupScreen() {
         onRequestClose={() => setShowBarangayPicker(false)}
       >
         <View style={pickerStyles.overlay}>
-          <View style={pickerStyles.sheet}>
-            <View style={pickerStyles.header}>
-              <Text style={pickerStyles.headerText}>Select Barangay</Text>
+          <View style={[pickerStyles.sheet, { backgroundColor: card }]}>
+            <View style={[pickerStyles.header, { borderBottomColor: border }]}>
+              <Text style={[pickerStyles.headerText, { color: text }]}>Select Barangay</Text>
               <Pressable onPress={() => setShowBarangayPicker(false)} hitSlop={8}>
-                <Ionicons name="close" size={22} color="#888888" />
+                <Ionicons name="close" size={22} color={textSecondary} />
               </Pressable>
             </View>
 
             <TextInput
-              style={pickerStyles.search}
+              style={[pickerStyles.search, { borderColor: border, backgroundColor: backgroundElem, color: text }]}
               value={pickerSearch}
               onChangeText={setPickerSearch}
               placeholder="Search barangay…"
-              placeholderTextColor="#BBBBBB"
+              placeholderTextColor={placeholder}
               autoFocus
             />
 
             {loadingBarangays ? (
-              <ActivityIndicator color="#111111" style={{ padding: 24 }} />
+              <ActivityIndicator color={primary} style={{ padding: 24 }} />
             ) : (
               <FlatList
                 keyboardShouldPersistTaps="handled"
@@ -483,15 +499,15 @@ export default function SignupScreen() {
                 keyExtractor={item => item.code}
                 renderItem={({ item }: { item: AddressBarangay }) => (
                   <Pressable
-                    style={pickerStyles.item}
+                    style={[pickerStyles.item, { borderBottomColor: border }]}
                     onPress={() => { setBarangayCode(item.code); setShowBarangayPicker(false); }}
                   >
-                    <Text style={pickerStyles.itemText}>{item.name}</Text>
+                    <Text style={[pickerStyles.itemText, { color: text }]}>{item.name}</Text>
                   </Pressable>
                 )}
                 ListEmptyComponent={
                   <View style={pickerStyles.empty}>
-                    <Text style={pickerStyles.emptyText}>No results found</Text>
+                    <Text style={[pickerStyles.emptyText, { color: textSecondary }]}>No results found</Text>
                   </View>
                 }
               />
@@ -507,54 +523,54 @@ export default function SignupScreen() {
         presentationStyle="pageSheet"
         onRequestClose={() => setShowTerms(false)}
       >
-        <View style={styles.termsRoot}>
-          <View style={styles.termsHeader}>
-            <Text style={styles.termsTitle}>Terms & Privacy Policy</Text>
+        <View style={[styles.termsRoot, { backgroundColor: background }]}>
+          <View style={[styles.termsHeader, { borderBottomColor: border }]}>
+            <Text style={[styles.termsTitle, { color: text }]}>Terms & Privacy Policy</Text>
             <Pressable onPress={() => setShowTerms(false)} hitSlop={8} style={styles.termsCloseBtn}>
-              <Ionicons name="close" size={24} color="#111111" />
+              <Ionicons name="close" size={24} color={text} />
             </Pressable>
           </View>
           <ScrollView style={styles.termsScroll} contentContainerStyle={{ paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
-            <Text style={styles.termsContentTitle}>Data Collection and Usage</Text>
-            <Text style={styles.termsContentText}>
+            <Text style={[styles.termsContentTitle, { color: text }]}>Data Collection and Usage</Text>
+            <Text style={[styles.termsContentText, { color: textSecondary }]}>
               Aviso is designed to map and log road hazards in real-time. To make this possible, our application collects specific data from your edge device while you ride:
               {'\n\n'}• <Text style={{ fontFamily: 'JetBrainsMono_600SemiBold' }}>Camera Data:</Text> Our system processes real-time video feeds from your device to detect road hazards (such as potholes, road excavations, barriers, traffic lights, and traffic signs).
               {'\n\n'}• <Text style={{ fontFamily: 'JetBrainsMono_600SemiBold' }}>Hazard Logs:</Text> When a hazard is detected, the system records the hazard type, timestamp, and a confidence score. This data is synced to our secure cloud servers to update the global Admin Hazard Logs.
             </Text>
 
-            <Text style={styles.termsContentTitle}>Location Tracking</Text>
-            <Text style={styles.termsContentText}>
+            <Text style={[styles.termsContentTitle, { color: text }]}>Location Tracking</Text>
+            <Text style={[styles.termsContentText, { color: textSecondary }]}>
               • <Text style={{ fontFamily: 'JetBrainsMono_600SemiBold' }}>GPS Data:</Text> To accurately map detected hazards, Aviso requires continuous access to your device's location services (GPS) while the app is actively running or tracking a ride.
               {'\n\n'}• <Text style={{ fontFamily: 'JetBrainsMono_600SemiBold' }}>Privacy Guarantee:</Text> Your location data is strictly tied to detected road hazards. We do not use your location data to track your personal whereabouts for commercial purposes or share it with third-party advertisers.
             </Text>
 
-            <Text style={styles.termsContentTitle}>User Accounts and Security</Text>
-            <Text style={styles.termsContentText}>
+            <Text style={[styles.termsContentTitle, { color: text }]}>User Accounts and Security</Text>
+            <Text style={[styles.termsContentText, { color: textSecondary }]}>
               • You are responsible for maintaining the confidentiality of your account credentials (email, username, and password).
               {'\n\n'}• You agree to provide accurate and complete information during signup.
               {'\n\n'}• Administrative accounts hold the right to suspend or delete your account if you violate these terms or tamper with the application. For your privacy, administrators cannot view or modify your password.
             </Text>
 
-            <Text style={styles.termsContentTitle}>Safety Disclaimer</Text>
-            <Text style={styles.termsContentText}>
+            <Text style={[styles.termsContentTitle, { color: text }]}>Safety Disclaimer</Text>
+            <Text style={[styles.termsContentText, { color: textSecondary }]}>
               • <Text style={{ fontFamily: 'JetBrainsMono_600SemiBold' }}>Not a Substitute for Safe Driving:</Text> Aviso is a supplementary warning system using text-to-speech (TTS) to announce hazards. It is not a substitute for attentive driving. You must always keep your eyes on the road and obey all traffic laws.
               {'\n\n'}• We are not liable for any accidents, damages, or injuries that occur while using the application.
             </Text>
 
-            <Text style={styles.termsContentTitle}>Changes to These Terms</Text>
-            <Text style={styles.termsContentText}>
+            <Text style={[styles.termsContentTitle, { color: text }]}>Changes to These Terms</Text>
+            <Text style={[styles.termsContentText, { color: textSecondary }]}>
               We reserve the right to update these Terms and Conditions at any time. Continued use of the application after changes implies your acceptance of the updated terms.
             </Text>
           </ScrollView>
-          <View style={styles.termsFooter}>
-            <Pressable 
-              style={styles.button} 
+          <View style={[styles.termsFooter, { borderTopColor: border, backgroundColor: background }]}>
+            <Pressable
+              style={[styles.button, { backgroundColor: actionBg }]}
               onPress={() => {
                 setAgreedToTerms(true);
                 setShowTerms(false);
               }}
             >
-              <Text style={styles.buttonText}>I Understand and Agree</Text>
+              <Text style={[styles.buttonText, { color: actionText }]}>I Understand and Agree</Text>
             </Pressable>
           </View>
         </View>
@@ -565,18 +581,18 @@ export default function SignupScreen() {
 
 const pickerStyles = StyleSheet.create({
   overlay:    { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
-  sheet:      { backgroundColor: '#F7F7F7', borderTopLeftRadius: 16, borderTopRightRadius: 16, maxHeight: '75%' },
-  header:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, borderBottomWidth: 1, borderBottomColor: '#EBEBEB' },
-  headerText: { fontFamily: 'JetBrainsMono_700Bold', fontSize: 16, color: '#111111' },
-  search:     { margin: 12, padding: 10, borderRadius: 8, borderWidth: 1, borderColor: '#EBEBEB', backgroundColor: '#FFFFFF', fontFamily: 'JetBrainsMono_400Regular', fontSize: 14, color: '#111111' },
-  item:       { padding: 16, borderBottomWidth: 1, borderBottomColor: '#EBEBEB' },
-  itemText:   { fontFamily: 'JetBrainsMono_400Regular', fontSize: 15, color: '#111111' },
+  sheet:      { borderTopLeftRadius: 16, borderTopRightRadius: 16, maxHeight: '75%' },
+  header:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, borderBottomWidth: 1 },
+  headerText: { fontFamily: 'JetBrainsMono_700Bold', fontSize: 16 },
+  search:     { margin: 12, padding: 10, borderRadius: 8, borderWidth: 1, fontFamily: 'JetBrainsMono_400Regular', fontSize: 14 },
+  item:       { padding: 16, borderBottomWidth: 1 },
+  itemText:   { fontFamily: 'JetBrainsMono_400Regular', fontSize: 15 },
   empty:      { padding: 24, alignItems: 'center' },
-  emptyText:  { fontFamily: 'JetBrainsMono_400Regular', color: '#888888' },
+  emptyText:  { fontFamily: 'JetBrainsMono_400Regular' },
 });
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#F7F7F7' },
+  root: { flex: 1 },
   safeArea: { flex: 1 },
   flex: { flex: 1 },
   scroll: {
@@ -593,13 +609,11 @@ const styles = StyleSheet.create({
   appName: {
     fontFamily: 'JetBrainsMono_700Bold',
     fontSize: 28,
-    color: '#111111',
     letterSpacing: -0.5,
   },
   tagline: {
     fontFamily: 'JetBrainsMono_400Regular',
     fontSize: 13,
-    color: '#6B6B6B',
     marginTop: 4,
   },
   form: {},
@@ -609,22 +623,18 @@ const styles = StyleSheet.create({
   label: {
     fontFamily: 'JetBrainsMono_500Medium',
     fontSize: 13,
-    color: '#6B6B6B',
     marginBottom: 8,
   },
   optional: {
     fontFamily: 'JetBrainsMono_400Regular',
     fontSize: 12,
-    color: '#AAAAAA',
   },
   input: {
-    backgroundColor: '#EBEBEB',
     borderRadius: 12,
     paddingHorizontal: 16,
     paddingVertical: 13,
     fontSize: 15,
     fontFamily: 'JetBrainsMono_400Regular',
-    color: '#111111',
     minHeight: 50,
   },
   phoneRow: {
@@ -632,7 +642,6 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   phonePrefix: {
-    backgroundColor: '#EBEBEB',
     borderRadius: 12,
     paddingHorizontal: 14,
     justifyContent: 'center',
@@ -642,17 +651,14 @@ const styles = StyleSheet.create({
   phonePrefixText: {
     fontFamily: 'JetBrainsMono_600SemiBold',
     fontSize: 15,
-    color: '#6B6B6B',
   },
   phoneInput: {
     flex: 1,
-    backgroundColor: '#EBEBEB',
     borderRadius: 12,
     paddingHorizontal: 16,
     paddingVertical: 13,
     fontSize: 15,
     fontFamily: 'JetBrainsMono_400Regular',
-    color: '#111111',
     minHeight: 50,
   },
   inputWrapper: { position: 'relative' },
@@ -667,7 +673,6 @@ const styles = StyleSheet.create({
     lineHeight: 50,
     fontFamily: 'JetBrainsMono_500Medium',
     fontSize: 15,
-    color: '#AAAAAA',
     zIndex: 1,
   },
   eyeBtn: {
@@ -680,7 +685,6 @@ const styles = StyleSheet.create({
     minWidth: 44,
   },
   button: {
-    backgroundColor: '#111111',
     borderRadius: 32,
     minHeight: 52,
     justifyContent: 'center',
@@ -690,7 +694,6 @@ const styles = StyleSheet.create({
   buttonDisabled: { opacity: 0.45 },
   buttonText: {
     fontFamily: 'JetBrainsMono_600SemiBold',
-    color: '#FFFFFF',
     fontSize: 15,
   },
   linkRow: {
@@ -702,11 +705,9 @@ const styles = StyleSheet.create({
   linkText: {
     fontFamily: 'JetBrainsMono_400Regular',
     fontSize: 14,
-    color: '#888888',
   },
   linkBold: {
     fontFamily: 'JetBrainsMono_600SemiBold',
-    color: '#0274DF',
   },
   checker: {
     marginTop: 10,
@@ -736,29 +737,20 @@ const styles = StyleSheet.create({
     height: 20,
     borderRadius: 6,
     borderWidth: 2,
-    borderColor: '#AAAAAA',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#FFFFFF',
-  },
-  checkboxActive: {
-    borderColor: '#0274DF',
-    backgroundColor: '#0274DF',
   },
   termsText: {
     fontFamily: 'JetBrainsMono_400Regular',
     fontSize: 13,
-    color: '#6B6B6B',
     flex: 1,
     lineHeight: 18,
   },
   termsLink: {
     fontFamily: 'JetBrainsMono_600SemiBold',
-    color: '#0274DF',
   },
   termsRoot: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
     paddingTop: Platform.OS === 'ios' ? 44 : 20,
   },
   termsHeader: {
@@ -768,12 +760,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
   },
   termsTitle: {
     fontFamily: 'JetBrainsMono_700Bold',
     fontSize: 18,
-    color: '#111111',
   },
   termsCloseBtn: {
     padding: 4,
@@ -786,20 +776,16 @@ const styles = StyleSheet.create({
   termsContentTitle: {
     fontFamily: 'JetBrainsMono_700Bold',
     fontSize: 16,
-    color: '#111111',
     marginTop: 24,
     marginBottom: 12,
   },
   termsContentText: {
     fontFamily: 'JetBrainsMono_400Regular',
     fontSize: 14,
-    color: '#444444',
     lineHeight: 22,
   },
   termsFooter: {
     padding: 20,
     borderTopWidth: 1,
-    borderTopColor: '#F0F0F0',
-    backgroundColor: '#FFFFFF',
   },
 });

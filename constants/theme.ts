@@ -18,6 +18,7 @@
     tabBar: '#FFFFFF',
     actionBg: '#0A0A0A',
     actionText: '#FFFFFF',
+    placeholder: '#BBBBBB',
   },
   dark: {
     text: '#F2F2F2',
@@ -38,6 +39,7 @@
     tabBar: '#141414',
     actionBg: '#F0F0F0',
     actionText: '#0A0A0A',
+    placeholder: '#555555',
   },
 };
 

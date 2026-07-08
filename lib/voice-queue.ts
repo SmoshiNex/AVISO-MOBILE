@@ -1,16 +1,7 @@
 import * as Speech from 'expo-speech';
 import { HAZARD_WARNINGS } from '@/constants/hazards';
+import { VOICE_ALERT_PRIORITY, DEFAULT_VOICE_PRIORITY } from '@/constants/detections';
 import type { DetectionResult } from '@/types';
-
-const PRIORITY: Record<string, number> = {
-  'Pothole':              1,
-  'Road Excavation':      1,
-  'Road Barrier':         1,
-  'Traffic Light Red':    2,
-  'Traffic Light Orange': 2,
-  'Traffic Light Green':  3,
-  'Traffic Sign':         4,
-};
 
 const COOLDOWN_MS = 6000;
 
@@ -78,7 +69,7 @@ export function announceDetection(
 
   if (isSameType && withinCooldown) return;
 
-  const priority = PRIORITY[result.type] ?? 5;
+  const priority = VOICE_ALERT_PRIORITY[result.type] ?? DEFAULT_VOICE_PRIORITY;
   const text = buildAnnouncement(result, signInstruction);
 
   lastSpokenType = result.type;
@@ -89,7 +80,11 @@ export function announceDetection(
     return;
   }
 
-  if (!isSameType || priority < currentPriority) {
+  // Only a strictly higher-priority (lower number) detection may interrupt
+  // what's currently playing — a different-but-equal-or-lower-priority
+  // detection is dropped instead of preempting, so two same-tier hazards
+  // (e.g. Pothole then Road Excavation) can't repeatedly cut each other off.
+  if (priority < currentPriority) {
     stopCurrent();
     speakNow(text, priority);
   }

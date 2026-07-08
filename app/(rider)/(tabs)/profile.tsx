@@ -15,6 +15,8 @@ import * as ImagePicker from 'expo-image-picker';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useThemeColor } from '@/hooks/use-theme-color';
+import { useThemePreferenceContext } from '@/contexts/theme-context';
+import type { ThemePreference } from '@/hooks/use-theme-preference';
 import { api } from '@/lib/api-client';
 import type { User } from '@/types';
 import { styles } from '@/styles/profile.style';
@@ -26,6 +28,12 @@ type NavRow = {
   danger?: boolean;
 };
 
+const THEME_OPTIONS: { value: ThemePreference; icon: string; label: string }[] = [
+  { value: 'light', icon: 'sunny-outline', label: 'Light' },
+  { value: 'dark', icon: 'moon-outline', label: 'Dark' },
+  { value: 'system', icon: 'phone-portrait-outline', label: 'System' },
+];
+
 export default function ProfileScreen() {
   const background        = useThemeColor({}, 'background');
   const card              = useThemeColor({}, 'card');
@@ -33,8 +41,10 @@ export default function ProfileScreen() {
   const textSecondary     = useThemeColor({}, 'textSecondary');
   const primary           = useThemeColor({}, 'primary');
   const actionBg          = useThemeColor({}, 'actionBg');
+  const actionText        = useThemeColor({}, 'actionText');
   const danger            = useThemeColor({}, 'danger');
   const border            = useThemeColor({}, 'border');
+  const { preference, setPreference } = useThemePreferenceContext();
 
   const [user,            setUser]            = useState<User | null>(null);
   const [loggingOut,      setLoggingOut]      = useState(false);
@@ -174,6 +184,29 @@ export default function ProfileScreen() {
           </Text>
 
           <Text style={[styles.username, { color: textSecondary }]}>@{user?.username ?? '—'}</Text>
+        </View>
+
+        {/* Appearance */}
+        <Text style={[styles.sectionLabel, { color: textSecondary }]}>Appearance</Text>
+        <View style={[styles.themeCard, { backgroundColor: card, borderColor: border }]}>
+          {THEME_OPTIONS.map((option) => {
+            const isActive = preference === option.value;
+            return (
+              <TouchableOpacity
+                key={option.value}
+                style={[styles.themeOption, isActive && { backgroundColor: actionBg }]}
+                onPress={() => setPreference(option.value)}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityState={{ selected: isActive }}
+              >
+                <Ionicons name={option.icon as any} size={16} color={isActive ? actionText : textSecondary} />
+                <Text style={[styles.themeOptionText, { color: isActive ? actionText : textSecondary }]}>
+                  {option.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
         </View>
 
         {/* Navigation rows */}

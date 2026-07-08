@@ -1,4 +1,4 @@
-﻿import "../global.css";
+import "../global.css";
 import { useEffect } from "react";
 import {
     DarkTheme,
@@ -21,13 +21,11 @@ import { useNetworkStatus } from "@/hooks/use-network-status";
 import { initDb } from "@/lib/local-db";
 import { startSyncInterval, pullFromBackend } from "@/lib/sync-service";
 import { OfflineBanner } from "@/components/OfflineBanner";
+import { ThemePreferenceProvider } from "@/contexts/theme-context";
 
 SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
-    const colorScheme = useColorScheme();
-    const { isOnline } = useNetworkStatus();
-
     const [fontsLoaded] = useFonts({
         JetBrainsMono_400Regular,
         JetBrainsMono_500Medium,
@@ -58,11 +56,22 @@ export default function RootLayout() {
     if (!fontsLoaded) return null;
 
     return (
+        <ThemePreferenceProvider>
+            <RootLayoutNav />
+        </ThemePreferenceProvider>
+    );
+}
+
+function RootLayoutNav() {
+    const colorScheme = useColorScheme();
+    const { isOnline } = useNetworkStatus();
+
+    return (
         <ThemeProvider
             value={colorScheme === "dark" ? DarkTheme : DefaultTheme}
         >
             <Stack screenOptions={{ headerShown: false }} />
-            <StatusBar style="auto" />
+            <StatusBar style={colorScheme === "dark" ? "light" : "dark"} />
             <OfflineBanner isVisible={!isOnline} />
             <Toast />
         </ThemeProvider>

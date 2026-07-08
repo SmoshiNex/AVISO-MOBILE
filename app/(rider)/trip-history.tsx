@@ -72,7 +72,7 @@ export default function TripHistoryScreen() {
   };
 
   const handleTripPress = (trip: LocalTrip) => {
-    router.navigate({ pathname: '/(rider)/map', params: { trip_id: String(trip.id) } });
+    router.navigate({ pathname: '/(rider)/(tabs)/map', params: { trip_id: String(trip.id) } });
   };
 
   const renderItem = ({ item }: { item: LocalTrip }) => (

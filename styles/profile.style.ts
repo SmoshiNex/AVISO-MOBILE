@@ -135,4 +135,28 @@ export const styles = StyleSheet.create({
     minHeight: 52,
   },
   navLabel: { flex: 1, fontSize: 15, fontFamily: Fonts.medium },
+  sectionLabel: {
+    fontSize: 13,
+    fontFamily: Fonts.semibold,
+    marginBottom: Spacing.sm,
+    marginLeft: 2,
+  },
+  themeCard: {
+    flexDirection: 'row',
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    padding: 4,
+    marginBottom: Spacing.md,
+    gap: 4,
+  },
+  themeOption: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    minHeight: 44,
+    borderRadius: Radius.md,
+  },
+  themeOptionText: { fontSize: 13, fontFamily: Fonts.medium },
 });

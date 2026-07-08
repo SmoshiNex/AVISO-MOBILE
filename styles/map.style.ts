@@ -94,4 +94,25 @@ export const styles = StyleSheet.create({
   hazardDetailClose: { padding: 2 },
   hazardDetailRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   hazardDetailText: { fontSize: 12, flex: 1 },
+  featureToggles: {
+    position: 'absolute',
+    right: Spacing.md,
+    gap: 8,
+  },
+  featureBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.95)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+  },
+  featureBtnActive: {
+    backgroundColor: '#3b82f6', // Tailwind blue-500
+  },
 });

@@ -169,7 +169,7 @@ export default function HomeScreen() {
         {/* Start Ride Button */}
         <TouchableOpacity
           style={[styles.startButton, { backgroundColor: actionBg }]}
-          onPress={() => router.navigate('/(rider)/camera')}
+          onPress={() => router.navigate('/(rider)/(tabs)/camera')}
           activeOpacity={0.85}
         >
           <Ionicons name="bicycle" size={22} color={actionText} style={{ marginRight: 8 }} />

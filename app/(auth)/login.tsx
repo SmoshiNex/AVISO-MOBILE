@@ -19,11 +19,23 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import * as SecureStore from 'expo-secure-store';
 import { api } from '@/lib/api-client';
 import { pullFromBackend } from '@/lib/sync-service';
+import { useThemeColor } from '@/hooks/use-theme-color';
+import { useColorScheme } from '@/hooks/use-color-scheme';
 import type { User } from '@/types';
 
 type LoginResponse = { token: string; user: User };
 
 export default function LoginScreen() {
+  const background     = useThemeColor({}, 'background');
+  const backgroundElem = useThemeColor({}, 'backgroundElement');
+  const text            = useThemeColor({}, 'text');
+  const textSecondary    = useThemeColor({}, 'textSecondary');
+  const placeholder     = useThemeColor({}, 'placeholder');
+  const primary         = useThemeColor({}, 'primary');
+  const actionBg        = useThemeColor({}, 'actionBg');
+  const actionText      = useThemeColor({}, 'actionText');
+  const colorScheme = useColorScheme();
+
   const params = useLocalSearchParams<{ email?: string }>();
   const [email, setEmail] = useState(params.email || '');
   const [password, setPassword] = useState('');
@@ -48,8 +60,8 @@ export default function LoginScreen() {
   }
 
   return (
-    <View style={styles.root}>
-      <StatusBar barStyle="dark-content" backgroundColor="#F7F7F7" />
+    <View style={[styles.root, { backgroundColor: background }]}>
+      <StatusBar barStyle={colorScheme === 'dark' ? 'light-content' : 'dark-content'} backgroundColor={background} />
       <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
         <KeyboardAvoidingView
           style={styles.flex}
@@ -67,42 +79,42 @@ export default function LoginScreen() {
                 style={styles.logoImg}
                 resizeMode="contain"
               />
-              <Text style={styles.appName}>AVISO</Text>
-              <Text style={styles.tagline}>Rider Safety Platform</Text>
+              <Text style={[styles.appName, { color: text }]}>AVISO</Text>
+              <Text style={[styles.tagline, { color: textSecondary }]}>Rider Safety Platform</Text>
             </View>
 
             <View style={styles.form}>
               <View style={styles.field}>
-                <Text style={styles.label}>Email or username</Text>
+                <Text style={[styles.label, { color: textSecondary }]}>Email or username</Text>
                 <TextInput
-                  style={styles.input}
+                  style={[styles.input, { backgroundColor: backgroundElem, color: text }]}
                   value={email}
                   onChangeText={setEmail}
                   placeholder="Email or username"
-                  placeholderTextColor="#BBBBBB"
+                  placeholderTextColor={placeholder}
                   keyboardType="default"
                   autoCapitalize="none"
                   autoCorrect={false}
                   returnKeyType="next"
-                  keyboardAppearance="light"
+                  keyboardAppearance={colorScheme}
                   underlineColorAndroid="transparent"
                 />
               </View>
 
               <View style={styles.field}>
-                <Text style={styles.label}>Password</Text>
+                <Text style={[styles.label, { color: textSecondary }]}>Password</Text>
                 <View style={styles.inputWrapper}>
                   <TextInput
-                    style={[styles.input, password.length > 0 && styles.inputWithEye]}
+                    style={[styles.input, { backgroundColor: backgroundElem, color: text }, password.length > 0 && styles.inputWithEye]}
                     value={password}
                     onChangeText={setPassword}
                     placeholder="Your password"
-                    placeholderTextColor="#BBBBBB"
+                    placeholderTextColor={placeholder}
                     secureTextEntry={!showPassword}
                     autoCapitalize="none"
                     returnKeyType="done"
                     onSubmitEditing={handleLogin}
-                    keyboardAppearance="light"
+                    keyboardAppearance={colorScheme}
                     underlineColorAndroid="transparent"
                   />
                   {password.length > 0 && (
@@ -114,7 +126,7 @@ export default function LoginScreen() {
                       <Ionicons
                         name={showPassword ? 'eye-off' : 'eye'}
                         size={18}
-                        color="#888888"
+                        color={textSecondary}
                       />
                     </Pressable>
                   )}
@@ -122,14 +134,14 @@ export default function LoginScreen() {
               </View>
 
               <Pressable
-                style={[styles.button, loading && styles.buttonDisabled]}
+                style={[styles.button, { backgroundColor: actionBg }, loading && styles.buttonDisabled]}
                 onPress={handleLogin}
                 disabled={loading}
               >
                 {loading ? (
-                  <ActivityIndicator color="#FFFFFF" />
+                  <ActivityIndicator color={actionText} />
                 ) : (
-                  <Text style={styles.buttonText}>Log In</Text>
+                  <Text style={[styles.buttonText, { color: actionText }]}>Log In</Text>
                 )}
               </Pressable>
 
@@ -137,13 +149,13 @@ export default function LoginScreen() {
                 onPress={() => router.push('/(auth)/forgot-password')}
                 style={styles.forgotBtn}
               >
-                <Text style={styles.forgotText}>Forgot password?</Text>
+                <Text style={[styles.forgotText, { color: primary }]}>Forgot password?</Text>
               </Pressable>
 
               <Pressable onPress={() => router.push('/(auth)/signup')} style={styles.linkRow}>
-                <Text style={styles.linkText}>
+                <Text style={[styles.linkText, { color: textSecondary }]}>
                   Don't have an account?{' '}
-                  <Text style={styles.linkBold}>Sign up</Text>
+                  <Text style={[styles.linkBold, { color: primary }]}>Sign up</Text>
                 </Text>
               </Pressable>
             </View>
@@ -155,7 +167,7 @@ export default function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#F7F7F7' },
+  root: { flex: 1 },
   safeArea: { flex: 1 },
   flex: { flex: 1 },
   scroll: {
@@ -172,13 +184,11 @@ const styles = StyleSheet.create({
   appName: {
     fontFamily: 'JetBrainsMono_700Bold',
     fontSize: 30,
-    color: '#111111',
     letterSpacing: -0.5,
   },
   tagline: {
     fontFamily: 'JetBrainsMono_400Regular',
     fontSize: 13,
-    color: '#6B6B6B',
     marginTop: 4,
   },
   form: {},
@@ -186,17 +196,14 @@ const styles = StyleSheet.create({
   label: {
     fontFamily: 'JetBrainsMono_500Medium',
     fontSize: 13,
-    color: '#6B6B6B',
     marginBottom: 8,
   },
   input: {
-    backgroundColor: '#EBEBEB',
     borderRadius: 12,
     paddingHorizontal: 16,
     paddingVertical: 14,
     fontSize: 15,
     fontFamily: 'JetBrainsMono_400Regular',
-    color: '#111111',
     minHeight: 50,
   },
   inputWrapper: { position: 'relative' },
@@ -211,7 +218,6 @@ const styles = StyleSheet.create({
     minWidth: 44,
   },
   button: {
-    backgroundColor: '#111111',
     borderRadius: 32,
     minHeight: 52,
     justifyContent: 'center',
@@ -221,7 +227,6 @@ const styles = StyleSheet.create({
   buttonDisabled: { opacity: 0.45 },
   buttonText: {
     fontFamily: 'JetBrainsMono_600SemiBold',
-    color: '#FFFFFF',
     fontSize: 15,
   },
   forgotBtn: {
@@ -233,7 +238,6 @@ const styles = StyleSheet.create({
   forgotText: {
     fontFamily: 'JetBrainsMono_500Medium',
     fontSize: 14,
-    color: '#0274DF',
   },
   linkRow: {
     alignItems: 'center',
@@ -244,10 +248,8 @@ const styles = StyleSheet.create({
   linkText: {
     fontFamily: 'JetBrainsMono_400Regular',
     fontSize: 14,
-    color: '#888888',
   },
   linkBold: {
     fontFamily: 'JetBrainsMono_600SemiBold',
-    color: '#0274DF',
   },
 });

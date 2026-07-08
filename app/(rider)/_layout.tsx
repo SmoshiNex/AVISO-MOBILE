@@ -1,13 +1,13 @@
 import { Stack } from 'expo-router';
 import { useEffect } from 'react';
 import { useCrashDetection } from '@/hooks/use-crash-detection';
-import { useTrip } from '@/hooks/use-trip';
 import { generateJarvisAudio } from '@/lib/openai-tts';
 import { SOS_TEXT, SOS_CACHE_KEY } from '@/constants/sos';
 import { PermissionsGate } from '@/components/PermissionsGate';
+import { TripProvider, useTripContext } from '@/contexts/trip-context';
 
-export default function RiderLayout() {
-  const { isActive } = useTrip();
+function RiderStack() {
+  const { isActive } = useTripContext();
   useCrashDetection(isActive);
 
   useEffect(() => {
@@ -18,5 +18,13 @@ export default function RiderLayout() {
     <PermissionsGate>
       <Stack screenOptions={{ headerShown: false }} />
     </PermissionsGate>
+  );
+}
+
+export default function RiderLayout() {
+  return (
+    <TripProvider>
+      <RiderStack />
+    </TripProvider>
   );
 }

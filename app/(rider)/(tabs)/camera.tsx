@@ -22,9 +22,10 @@ import { Accelerometer, Gyroscope } from "expo-sensors";
 import { Ionicons } from "@expo/vector-icons";
 import Toast from "react-native-toast-message";
 import { useThemeColor } from "@/hooks/use-theme-color";
-import { useTrip } from "@/hooks/use-trip";
+import { useTripContext } from "@/contexts/trip-context";
 import { DemoDetectionSource } from "@/lib/demo-detection-source";
 import { announceDetection, stopAllSpeech } from "@/lib/voice-queue";
+import { selectPriorityDetection } from "@/lib/select-priority-detection";
 import { saveHazardLog, incrementTripHazards } from "@/lib/local-db";
 import { api } from "@/lib/api-client";
 import * as Network from "expo-network";
@@ -69,7 +70,7 @@ export default function CameraScreen() {
         [accelMag, gyroMag],
     );
     const { width: screenWidth, height: screenHeight } = useWindowDimensions();
-    const { trip, isActive, startTrip, endTrip } = useTrip();
+    const { trip, isActive, startTrip, endTrip } = useTripContext();
     const warningTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     const detectionClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
         null,
@@ -166,16 +167,6 @@ export default function CameraScreen() {
                     }
                 }
 
-                const signInstruction = result.signKey
-                    ? (roadSigns as Record<string, { instruction: string }>)[
-                          result.signKey
-                      ]?.instruction
-                    : undefined;
-                setTimeout(
-                    () => announceDetection(result, signInstruction),
-                    50,
-                );
-
                 if (result.type !== "Traffic Sign") {
                     const warning = HAZARD_WARNINGS[result.type];
                     if (warning) {
@@ -188,6 +179,24 @@ export default function CameraScreen() {
                         );
                     }
                 }
+            }
+
+            // Voice: only one candidate per tick, even if multiple objects were
+            // detected — prevents competing announceDetection() calls from
+            // rapid-firing/interrupting each other when the real model starts
+            // emitting simultaneous detections.
+            const audioCandidates = results.filter((r) => r.confidence >= 0.6);
+            const topDetection = selectPriorityDetection(audioCandidates);
+            if (topDetection) {
+                const signInstruction = topDetection.signKey
+                    ? (roadSigns as Record<string, { instruction: string }>)[
+                          topDetection.signKey
+                      ]?.instruction
+                    : undefined;
+                setTimeout(
+                    () => announceDetection(topDetection, signInstruction),
+                    50,
+                );
             }
         },
         [trip, isActive],

@@ -14,10 +14,22 @@ import {
 import { router, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { api } from '@/lib/api-client';
+import { useThemeColor } from '@/hooks/use-theme-color';
+import { useColorScheme } from '@/hooks/use-color-scheme';
 
 const OTP_LENGTH = 6;
 
 export default function ForgotPasswordOtpScreen() {
+  const background     = useThemeColor({}, 'background');
+  const backgroundElem = useThemeColor({}, 'backgroundElement');
+  const text             = useThemeColor({}, 'text');
+  const textSecondary    = useThemeColor({}, 'textSecondary');
+  const placeholder     = useThemeColor({}, 'placeholder');
+  const primary         = useThemeColor({}, 'primary');
+  const actionBg        = useThemeColor({}, 'actionBg');
+  const actionText      = useThemeColor({}, 'actionText');
+  const colorScheme = useColorScheme();
+
   const { email } = useLocalSearchParams<{ email: string }>();
   const [digits, setDigits] = useState<string[]>(Array(OTP_LENGTH).fill(''));
   const [loading, setLoading] = useState(false);
@@ -88,8 +100,8 @@ export default function ForgotPasswordOtpScreen() {
   const otpFilled = digits.join('').length === OTP_LENGTH;
 
   return (
-    <View style={styles.root}>
-      <StatusBar barStyle="dark-content" backgroundColor="#F7F7F7" />
+    <View style={[styles.root, { backgroundColor: background }]}>
+      <StatusBar barStyle={colorScheme === 'dark' ? 'light-content' : 'dark-content'} backgroundColor={background} />
       <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
         <KeyboardAvoidingView
           style={styles.flex}
@@ -98,14 +110,21 @@ export default function ForgotPasswordOtpScreen() {
           <View style={styles.content}>
             <View style={styles.steps}>
               {[1, 2, 3].map((n) => (
-                <View key={n} style={[styles.stepDot, n <= 2 && styles.stepDotActive]} />
+                <View
+                  key={n}
+                  style={[
+                    styles.stepDot,
+                    { backgroundColor: n <= 2 ? primary : backgroundElem },
+                    n <= 2 && styles.stepDotActive,
+                  ]}
+                />
               ))}
             </View>
 
-            <Text style={styles.title}>Check your email</Text>
-            <Text style={styles.subtitle}>
+            <Text style={[styles.title, { color: text }]}>Check your email</Text>
+            <Text style={[styles.subtitle, { color: textSecondary }]}>
               We sent a 6-digit reset code to{'\n'}
-              <Text style={styles.emailText}>{email}</Text>
+              <Text style={[styles.emailText, { color: primary }]}>{email}</Text>
             </Text>
 
             <View style={styles.otpRow}>
@@ -113,12 +132,16 @@ export default function ForgotPasswordOtpScreen() {
                 <TextInput
                   key={i}
                   ref={(ref) => { inputRefs.current[i] = ref; }}
-                  style={[styles.otpBox, digit ? styles.otpBoxFilled : null]}
+                  style={[
+                    styles.otpBox,
+                    { backgroundColor: backgroundElem, color: text },
+                    digit ? [styles.otpBoxFilled, { backgroundColor: 'rgba(2, 116, 223, 0.07)', borderColor: primary }] : null,
+                  ]}
                   value={digit}
                   onChangeText={(text) => handleDigitChange(text, i)}
                   onKeyPress={({ nativeEvent }) => handleKeyPress(nativeEvent.key, i)}
                   keyboardType="number-pad"
-                  keyboardAppearance="light"
+                  keyboardAppearance={colorScheme}
                   underlineColorAndroid="transparent"
                   maxLength={1}
                   selectTextOnFocus
@@ -128,14 +151,14 @@ export default function ForgotPasswordOtpScreen() {
             </View>
 
             <Pressable
-              style={[styles.button, (!otpFilled || loading) && styles.buttonDisabled]}
+              style={[styles.button, { backgroundColor: actionBg }, (!otpFilled || loading) && styles.buttonDisabled]}
               onPress={handleVerify}
               disabled={!otpFilled || loading}
             >
               {loading ? (
-                <ActivityIndicator color="#FFFFFF" />
+                <ActivityIndicator color={actionText} />
               ) : (
-                <Text style={styles.buttonText}>Verify Code</Text>
+                <Text style={[styles.buttonText, { color: actionText }]}>Verify Code</Text>
               )}
             </Pressable>
 
@@ -145,16 +168,16 @@ export default function ForgotPasswordOtpScreen() {
               style={styles.resendBtn}
             >
               {resending ? (
-                <ActivityIndicator color="#0274DF" size="small" />
+                <ActivityIndicator color={primary} size="small" />
               ) : (
-                <Text style={[styles.resendText, cooldown > 0 && styles.resendDisabled]}>
+                <Text style={[styles.resendText, { color: cooldown > 0 ? placeholder : primary }]}>
                   {cooldown > 0 ? `Resend in ${cooldown}s` : 'Resend code'}
                 </Text>
               )}
             </Pressable>
 
             <Pressable onPress={() => router.back()} style={styles.backBtn}>
-              <Text style={styles.backText}>← Go back</Text>
+              <Text style={[styles.backText, { color: placeholder }]}>← Go back</Text>
             </Pressable>
           </View>
         </KeyboardAvoidingView>
@@ -164,7 +187,7 @@ export default function ForgotPasswordOtpScreen() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#F7F7F7' },
+  root: { flex: 1 },
   safeArea: { flex: 1 },
   flex: { flex: 1 },
   content: {
@@ -183,30 +206,25 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: '#DDDDDD',
   },
   stepDotActive: {
-    backgroundColor: '#0274DF',
     width: 24,
   },
   title: {
     fontFamily: 'JetBrainsMono_700Bold',
     fontSize: 26,
-    color: '#111111',
     marginBottom: 12,
     letterSpacing: -0.3,
   },
   subtitle: {
     fontFamily: 'JetBrainsMono_400Regular',
     fontSize: 15,
-    color: '#6B6B6B',
     textAlign: 'center',
     lineHeight: 24,
     marginBottom: 36,
   },
   emailText: {
     fontFamily: 'JetBrainsMono_600SemiBold',
-    color: '#0274DF',
   },
   otpRow: {
     flexDirection: 'row',
@@ -216,20 +234,15 @@ const styles = StyleSheet.create({
   otpBox: {
     width: 48,
     height: 58,
-    backgroundColor: '#EBEBEB',
     borderRadius: 12,
     fontSize: 22,
     fontFamily: 'JetBrainsMono_700Bold',
-    color: '#111111',
     textAlign: 'center',
   },
   otpBoxFilled: {
-    backgroundColor: 'rgba(2, 116, 223, 0.07)',
     borderWidth: 1.5,
-    borderColor: '#0274DF',
   },
   button: {
-    backgroundColor: '#111111',
     borderRadius: 32,
     width: '100%',
     minHeight: 52,
@@ -239,7 +252,6 @@ const styles = StyleSheet.create({
   buttonDisabled: { opacity: 0.45 },
   buttonText: {
     fontFamily: 'JetBrainsMono_600SemiBold',
-    color: '#FFFFFF',
     fontSize: 15,
   },
   resendBtn: {
@@ -249,10 +261,8 @@ const styles = StyleSheet.create({
   },
   resendText: {
     fontFamily: 'JetBrainsMono_500Medium',
-    color: '#0274DF',
     fontSize: 14,
   },
-  resendDisabled: { color: '#AAAAAA' },
   backBtn: {
     marginTop: 8,
     minHeight: 44,
@@ -260,7 +270,6 @@ const styles = StyleSheet.create({
   },
   backText: {
     fontFamily: 'JetBrainsMono_400Regular',
-    color: '#AAAAAA',
     fontSize: 14,
   },
 });

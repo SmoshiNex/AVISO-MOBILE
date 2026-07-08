@@ -1,4 +1,4 @@
-﻿import { useState } from 'react';
+import { useState } from 'react';
 import Toast from 'react-native-toast-message';
 import {
   ActivityIndicator,
@@ -16,8 +16,21 @@ import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { api } from '@/lib/api-client';
+import { useThemeColor } from '@/hooks/use-theme-color';
+import { useColorScheme } from '@/hooks/use-color-scheme';
 
 export default function ForgotPasswordResetScreen() {
+  const background     = useThemeColor({}, 'background');
+  const backgroundElem = useThemeColor({}, 'backgroundElement');
+  const text             = useThemeColor({}, 'text');
+  const textSecondary    = useThemeColor({}, 'textSecondary');
+  const placeholder     = useThemeColor({}, 'placeholder');
+  const primary         = useThemeColor({}, 'primary');
+  const success          = useThemeColor({}, 'success');
+  const actionBg        = useThemeColor({}, 'actionBg');
+  const actionText      = useThemeColor({}, 'actionText');
+  const colorScheme = useColorScheme();
+
   const { reset_token } = useLocalSearchParams<{ reset_token: string }>();
   const [password, setPassword] = useState('');
   const [passwordConfirmation, setPasswordConfirmation] = useState('');
@@ -59,8 +72,8 @@ export default function ForgotPasswordResetScreen() {
   }
 
   return (
-    <View style={styles.root}>
-      <StatusBar barStyle="dark-content" backgroundColor="#F7F7F7" />
+    <View style={[styles.root, { backgroundColor: background }]}>
+      <StatusBar barStyle={colorScheme === 'dark' ? 'light-content' : 'dark-content'} backgroundColor={background} />
       <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
         <KeyboardAvoidingView
           style={styles.flex}
@@ -73,29 +86,29 @@ export default function ForgotPasswordResetScreen() {
           >
             <View style={styles.steps}>
               {[1, 2, 3].map((n) => (
-                <View key={n} style={[styles.stepDot, styles.stepDotActive]} />
+                <View key={n} style={[styles.stepDot, styles.stepDotActive, { backgroundColor: primary }]} />
               ))}
             </View>
 
-            <Text style={styles.title}>Create new password</Text>
-            <Text style={styles.subtitle}>
+            <Text style={[styles.title, { color: text }]}>Create new password</Text>
+            <Text style={[styles.subtitle, { color: textSecondary }]}>
               Choose a strong password for your AVISO account.
             </Text>
 
             <View style={styles.form}>
               <View style={styles.field}>
-                <Text style={styles.label}>New password</Text>
+                <Text style={[styles.label, { color: textSecondary }]}>New password</Text>
                 <View style={styles.inputWrapper}>
                   <TextInput
-                    style={[styles.input, password.length > 0 && styles.inputWithEye]}
+                    style={[styles.input, { backgroundColor: backgroundElem, color: text }, password.length > 0 && styles.inputWithEye]}
                     value={password}
                     onChangeText={setPassword}
                     placeholder="At least 8 characters"
-                    placeholderTextColor="#BBBBBB"
+                    placeholderTextColor={placeholder}
                     secureTextEntry={!showPassword}
                     autoCapitalize="none"
                     returnKeyType="next"
-                    keyboardAppearance="light"
+                    keyboardAppearance={colorScheme}
                     underlineColorAndroid="transparent"
                   />
                   {password.length > 0 && (
@@ -107,7 +120,7 @@ export default function ForgotPasswordResetScreen() {
                       <Ionicons
                         name={showPassword ? 'eye-off' : 'eye'}
                         size={18}
-                        color="#888888"
+                        color={textSecondary}
                       />
                     </Pressable>
                   )}
@@ -119,9 +132,9 @@ export default function ForgotPasswordResetScreen() {
                         <Ionicons
                           name={rule.met ? 'checkmark-circle' : 'ellipse-outline'}
                           size={14}
-                          color={rule.met ? '#22C55E' : '#AAAAAA'}
+                          color={rule.met ? success : placeholder}
                         />
-                        <Text style={[styles.checkerText, { color: rule.met ? '#22C55E' : '#AAAAAA' }]}>
+                        <Text style={[styles.checkerText, { color: rule.met ? success : placeholder }]}>
                           {rule.label}
                         </Text>
                       </View>
@@ -131,19 +144,19 @@ export default function ForgotPasswordResetScreen() {
               </View>
 
               <View style={styles.field}>
-                <Text style={styles.label}>Confirm password</Text>
+                <Text style={[styles.label, { color: textSecondary }]}>Confirm password</Text>
                 <View style={styles.inputWrapper}>
                   <TextInput
-                    style={[styles.input, passwordConfirmation.length > 0 && styles.inputWithEye]}
+                    style={[styles.input, { backgroundColor: backgroundElem, color: text }, passwordConfirmation.length > 0 && styles.inputWithEye]}
                     value={passwordConfirmation}
                     onChangeText={setPasswordConfirmation}
                     placeholder="Repeat your password"
-                    placeholderTextColor="#BBBBBB"
+                    placeholderTextColor={placeholder}
                     secureTextEntry={!showConfirm}
                     autoCapitalize="none"
                     returnKeyType="done"
                     onSubmitEditing={handleReset}
-                    keyboardAppearance="light"
+                    keyboardAppearance={colorScheme}
                     underlineColorAndroid="transparent"
                   />
                   {passwordConfirmation.length > 0 && (
@@ -155,7 +168,7 @@ export default function ForgotPasswordResetScreen() {
                       <Ionicons
                         name={showConfirm ? 'eye-off' : 'eye'}
                         size={18}
-                        color="#888888"
+                        color={textSecondary}
                       />
                     </Pressable>
                   )}
@@ -163,14 +176,14 @@ export default function ForgotPasswordResetScreen() {
               </View>
 
               <Pressable
-                style={[styles.button, loading && styles.buttonDisabled]}
+                style={[styles.button, { backgroundColor: actionBg }, loading && styles.buttonDisabled]}
                 onPress={handleReset}
                 disabled={loading}
               >
                 {loading ? (
-                  <ActivityIndicator color="#FFFFFF" />
+                  <ActivityIndicator color={actionText} />
                 ) : (
-                  <Text style={styles.buttonText}>Reset Password</Text>
+                  <Text style={[styles.buttonText, { color: actionText }]}>Reset Password</Text>
                 )}
               </Pressable>
             </View>
@@ -182,7 +195,7 @@ export default function ForgotPasswordResetScreen() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#F7F7F7' },
+  root: { flex: 1 },
   safeArea: { flex: 1 },
   flex: { flex: 1 },
   scroll: {
@@ -201,16 +214,13 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: '#DDDDDD',
   },
   stepDotActive: {
-    backgroundColor: '#0274DF',
     width: 24,
   },
   title: {
     fontFamily: 'JetBrainsMono_700Bold',
     fontSize: 26,
-    color: '#111111',
     textAlign: 'center',
     marginBottom: 10,
     letterSpacing: -0.3,
@@ -218,7 +228,6 @@ const styles = StyleSheet.create({
   subtitle: {
     fontFamily: 'JetBrainsMono_400Regular',
     fontSize: 14,
-    color: '#6B6B6B',
     textAlign: 'center',
     lineHeight: 22,
     marginBottom: 32,
@@ -228,17 +237,14 @@ const styles = StyleSheet.create({
   label: {
     fontFamily: 'JetBrainsMono_500Medium',
     fontSize: 13,
-    color: '#6B6B6B',
     marginBottom: 8,
   },
   input: {
-    backgroundColor: '#EBEBEB',
     borderRadius: 12,
     paddingHorizontal: 16,
     paddingVertical: 13,
     fontSize: 15,
     fontFamily: 'JetBrainsMono_400Regular',
-    color: '#111111',
     minHeight: 50,
   },
   inputWrapper: { position: 'relative' },
@@ -268,7 +274,6 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   button: {
-    backgroundColor: '#111111',
     borderRadius: 32,
     minHeight: 52,
     justifyContent: 'center',
@@ -278,7 +283,6 @@ const styles = StyleSheet.create({
   buttonDisabled: { opacity: 0.45 },
   buttonText: {
     fontFamily: 'JetBrainsMono_600SemiBold',
-    color: '#FFFFFF',
     fontSize: 15,
   },
 });

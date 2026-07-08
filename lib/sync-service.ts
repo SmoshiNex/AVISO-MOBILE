@@ -81,8 +81,10 @@ async function syncCrashEvents(): Promise<void> {
       });
       await markCrashEventSynced(event.id);
     } catch {
-      // Fire-and-forget — mark it anyway to avoid spamming the endpoint
-      // The SMS was already sent, so admin visibility is best-effort
+      // Leave unsynced so this event is retried on the next sync interval.
+      // This is the deferred SkySMS path: an SOS raised while offline reaches
+      // the backend here once connectivity returns, notifying contacts and
+      // surfacing the alert on the admin dashboard.
     }
   }
 }

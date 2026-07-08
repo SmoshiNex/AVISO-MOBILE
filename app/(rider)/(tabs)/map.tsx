@@ -1,20 +1,20 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef, useMemo, useId } from 'react';
 import {
   View,
   Text,
   TouchableOpacity,
-  StyleSheet,
   ScrollView,
   ActivityIndicator,
 } from 'react-native';
 
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import MapView, { Marker, Polyline, PROVIDER_DEFAULT } from 'react-native-maps';
+import { Map, MapMarker, MapRoute, MapUserLocation, MapControls, MapHeatmap, useMap } from '@/components/ui/map';
 import { useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import Mapbox from '@rnmapbox/maps';
 import Toast from 'react-native-toast-message';
 import { useThemeColor } from '@/hooks/use-theme-color';
-import { useTrip } from '@/hooks/use-trip';
+import { useTripContext } from '@/contexts/trip-context';
 import { getTripById, getHazardLogsForTrip, getHazardLogs } from '@/lib/local-db';
 import { api } from '@/lib/api-client';
 import { HAZARD_COLORS } from '@/constants/hazards';
@@ -31,12 +31,25 @@ const HAZARD_STAT_GROUPS = [
 
 type SelectedHazard = { source: 'local'; data: LocalHazardLog } | { source: 'api'; data: HazardLog };
 
-const ZAMBOANGA_REGION = {
-  latitude: 6.9214,
-  longitude: 122.0790,
-  latitudeDelta: 0.08,
-  longitudeDelta: 0.08,
-};
+// Mapbox uses [longitude, latitude] order (GeoJSON convention)
+const ZAMBOANGA_CENTER: [number, number] = [122.0790, 6.9214];
+const ZAMBOANGA_ZOOM = 12;
+
+function MarkerDot({ color }: { color: string }) {
+  return (
+    <View
+      style={{
+        width: 16,
+        height: 16,
+        borderRadius: 8,
+        backgroundColor: color,
+        borderWidth: 3,
+        borderColor: '#fff',
+        elevation: 4,
+      }}
+    />
+  );
+}
 
 export default function MapScreen() {
   const { trip_id } = useLocalSearchParams<{ trip_id?: string }>();
@@ -52,7 +65,7 @@ export default function MapScreen() {
   const success = useThemeColor({}, 'success');
   const border = useThemeColor({}, 'border');
 
-  const { trip: activeTrip, isActive, startTrip, endTrip } = useTrip();
+  const { trip: activeTrip, isActive, startTrip, endTrip } = useTripContext();
 
   const [historyTrip, setHistoryTrip] = useState<LocalTrip | null>(null);
   const [historyHazards, setHistoryHazards] = useState<LocalHazardLog[]>([]);
@@ -60,12 +73,59 @@ export default function MapScreen() {
 
   const [liveHazards, setLiveHazards] = useState<LocalHazardLog[]>([]);
   const [backendHazards, setBackendHazards] = useState<HazardLog[]>([]);
+  const [mapTheme, setMapTheme] = useState<"system" | "light" | "dark">("system");
+
+  const [showHeatmap, setShowHeatmap] = useState(false);
+  const [currentZoom, setCurrentZoom] = useState(14);
+
+  const heatmapData = useMemo(() => {
+    return [...backendHazards, ...liveHazards]
+      .filter(h => ["Pothole", "Road Excavation", "Road Barrier"].includes(h.type))
+      .map(h => ({
+        latitude: typeof h.latitude === 'number' ? h.latitude : parseFloat(h.latitude as string),
+        longitude: typeof h.longitude === 'number' ? h.longitude : parseFloat(h.longitude as string),
+        weight: typeof h.confidence === 'number' ? h.confidence : parseFloat(h.confidence as string)
+      }));
+  }, [backendHazards, liveHazards, showHeatmap]);
+
+  const markerFeatures = useMemo(() => {
+    return {
+      type: 'FeatureCollection' as const,
+      features: [
+        ...liveHazards.map(h => ({
+          type: 'Feature' as const,
+          id: `live-${h.id}`,
+          geometry: { type: 'Point' as const, coordinates: [h.longitude, h.latitude] },
+          properties: { id: `live-${h.id}`, color: HAZARD_COLORS[h.type] ?? primary }
+        })),
+        ...backendHazards.map(h => ({
+          type: 'Feature' as const,
+          id: `api-${h.id}`,
+          geometry: { type: 'Point' as const, coordinates: [parseFloat(h.longitude), parseFloat(h.latitude)] },
+          properties: { id: `api-${h.id}`, color: HAZARD_COLORS[h.type] ?? primary }
+        }))
+      ]
+    };
+  }, [liveHazards, backendHazards, primary]);
+
+  const historyMarkerFeatures = useMemo(() => {
+    return {
+      type: 'FeatureCollection' as const,
+      features: historyHazards.map(h => ({
+        type: 'Feature' as const,
+        id: `history-${h.id}`,
+        geometry: { type: 'Point' as const, coordinates: [h.longitude, h.latitude] },
+        properties: { id: `history-${h.id}`, color: HAZARD_COLORS[h.type] ?? primary }
+      }))
+    };
+  }, [historyHazards, primary]);
 
   const [visibleBounds, setVisibleBounds] = useState<{
     minLat: number; maxLat: number; minLng: number; maxLng: number;
   } | null>(null);
 
   const [selectedHazard, setSelectedHazard] = useState<SelectedHazard | null>(null);
+  const isFeaturePressRef = useRef(false);
 
   useEffect(() => {
     if (isHistoryMode) return;
@@ -146,55 +206,65 @@ export default function MapScreen() {
       );
     }
 
-    const routeCoords = historyTrip.route_points.map((p) => ({
-      latitude: p.lat,
-      longitude: p.lng,
-    }));
+    // GeoJSON order: [lng, lat]
+    const routeCoords: [number, number][] = historyTrip.route_points.map((p) => [p.lng, p.lat]);
 
-    const initialRegion = historyTrip.start_lat && historyTrip.start_lng
-      ? {
-          latitude: historyTrip.start_lat,
-          longitude: historyTrip.start_lng,
-          latitudeDelta: 0.02,
-          longitudeDelta: 0.02,
-        }
-      : ZAMBOANGA_REGION;
+    const center: [number, number] = historyTrip.start_lat && historyTrip.start_lng
+      ? [historyTrip.start_lng, historyTrip.start_lat]
+      : ZAMBOANGA_CENTER;
+    const zoom = historyTrip.start_lat && historyTrip.start_lng ? 14 : ZAMBOANGA_ZOOM;
 
     return (
       <View style={styles.container}>
-        <MapView
-          style={StyleSheet.absoluteFill}
-          provider={PROVIDER_DEFAULT}
-          initialRegion={initialRegion}
-          showsUserLocation={false}
-        >
+        <Map center={center} zoom={zoom}>
           {routeCoords.length > 1 && (
-            <Polyline coordinates={routeCoords} strokeColor={primary} strokeWidth={4} />
+            <MapRoute coordinates={routeCoords} color={primary} width={4} />
           )}
           {historyTrip.start_lat && historyTrip.start_lng && (
-            <Marker
-              coordinate={{ latitude: historyTrip.start_lat, longitude: historyTrip.start_lng }}
-              title="Start"
-              pinColor="#22C55E"
-            />
+            <MapMarker
+              longitude={historyTrip.start_lng}
+              latitude={historyTrip.start_lat}
+              label="Start"
+            >
+              <MarkerDot color="#22C55E" />
+            </MapMarker>
           )}
           {historyTrip.end_lat && historyTrip.end_lng && (
-            <Marker
-              coordinate={{ latitude: historyTrip.end_lat, longitude: historyTrip.end_lng }}
-              title="End"
-              pinColor="#EF4444"
-            />
+            <MapMarker
+              longitude={historyTrip.end_lng}
+              latitude={historyTrip.end_lat}
+              label="End"
+            >
+              <MarkerDot color="#EF4444" />
+            </MapMarker>
           )}
-          {historyHazards.map((h) => (
-            <Marker
-              key={h.id}
-              coordinate={{ latitude: h.latitude, longitude: h.longitude }}
-              title={h.type}
-              description={`${Math.round(h.confidence * 100)}% confidence`}
-              pinColor={HAZARD_COLORS[h.type] ?? primary}
+
+          <Mapbox.ShapeSource 
+            id="history-hazards-source" 
+            shape={historyMarkerFeatures} 
+            onPress={(e) => {
+              isFeaturePressRef.current = true;
+              const feature = e.features[0];
+              const id = feature?.properties?.id;
+              if (!id) return;
+              const data = historyHazards.find(h => `history-${h.id}` === id);
+              if (data) setSelectedHazard({ source: 'local', data });
+              setTimeout(() => { isFeaturePressRef.current = false; }, 100);
+            }}
+          >
+            <Mapbox.CircleLayer
+              id="history-hazards-layer"
+              minZoomLevel={12.5}
+              style={{
+                circleRadius: 6,
+                circleColor: ['get', 'color'],
+                circleStrokeWidth: 2,
+                circleStrokeColor: 'white',
+                circlePitchAlignment: 'map',
+              }}
             />
-          ))}
-        </MapView>
+          </Mapbox.ShapeSource>
+        </Map>
 
         <SafeAreaView edges={['top']} pointerEvents="box-none" style={styles.historyCardWrapper}>
           <View style={[styles.historyCard, { backgroundColor: card, borderColor: border }]}>
@@ -224,73 +294,95 @@ export default function MapScreen() {
   }
 
   // ── LIVE MODE ───────────────────────────────────────────────────────────────
-  const liveRegion = activeTrip?.current_lat && activeTrip?.current_lng
-    ? {
-        latitude: activeTrip.current_lat,
-        longitude: activeTrip.current_lng,
-        latitudeDelta: 0.01,
-        longitudeDelta: 0.01,
-      }
-    : ZAMBOANGA_REGION;
+  const liveCenter: [number, number] = activeTrip?.current_lat && activeTrip?.current_lng
+    ? [activeTrip.current_lng, activeTrip.current_lat]
+    : ZAMBOANGA_CENTER;
+  const liveZoom = activeTrip?.current_lat && activeTrip?.current_lng ? 15 : ZAMBOANGA_ZOOM;
 
-  const routeCoords = activeTrip?.route_points?.map((p) => ({
-    latitude: p.lat,
-    longitude: p.lng,
-  })) ?? [];
+  // GeoJSON order: [lng, lat]
+  const routeCoords: [number, number][] =
+    activeTrip?.route_points?.map((p) => [p.lng, p.lat] as [number, number]) ?? [];
 
   return (
     <View style={styles.container}>
-      <MapView
-        style={StyleSheet.absoluteFill}
-        provider={PROVIDER_DEFAULT}
-        initialRegion={liveRegion}
-        showsUserLocation
-        followsUserLocation={isActive}
-        onRegionChangeComplete={(region) => {
+      <Map
+        center={liveCenter}
+        zoom={liveZoom}
+        theme={mapTheme}
+        followUserLocation={isActive}
+        onCameraChanged={(state) => {
+          setCurrentZoom(state.properties.zoom);
+          const { ne, sw } = state.properties.bounds;
           setVisibleBounds({
-            minLat: region.latitude - region.latitudeDelta / 2,
-            maxLat: region.latitude + region.latitudeDelta / 2,
-            minLng: region.longitude - region.longitudeDelta / 2,
-            maxLng: region.longitude + region.longitudeDelta / 2,
+            minLat: Math.min(sw[1], ne[1]),
+            maxLat: Math.max(sw[1], ne[1]),
+            minLng: Math.min(sw[0], ne[0]),
+            maxLng: Math.max(sw[0], ne[0]),
           });
         }}
-        onPress={() => setSelectedHazard(null)}
+        onPress={() => {
+          if (!isFeaturePressRef.current) setSelectedHazard(null);
+        }}
       >
+        <MapUserLocation showHeading />
+        <MapControls position="top-right" showLocate showZoom className="mt-[80px]" />
+        
+        <MapHeatmap data={heatmapData} visible={showHeatmap} />
+        <MapFeatureToggles 
+          showHeatmap={showHeatmap} 
+          setShowHeatmap={setShowHeatmap} 
+          mapTheme={mapTheme}
+          setMapTheme={setMapTheme}
+          insets={insets} 
+        />
+
         {routeCoords.length > 1 && (
-          <Polyline coordinates={routeCoords} strokeColor={primary} strokeWidth={3} />
+          <MapRoute coordinates={routeCoords} color={primary} width={3} />
         )}
 
         {activeTrip?.start_lat && activeTrip.start_lng && (
-          <Marker
-            coordinate={{ latitude: activeTrip.start_lat, longitude: activeTrip.start_lng }}
-            title="Start"
-            pinColor="#22C55E"
-          />
+          <MapMarker
+            longitude={activeTrip.start_lng}
+            latitude={activeTrip.start_lat}
+            label="Start"
+          >
+            <MarkerDot color="#22C55E" />
+          </MapMarker>
         )}
 
-        {liveHazards.map((h) => (
-          <Marker
-            key={`local-${h.id}`}
-            coordinate={{ latitude: h.latitude, longitude: h.longitude }}
-            title={h.type}
-            pinColor={HAZARD_COLORS[h.type] ?? primary}
-            onPress={() => setSelectedHazard({ source: 'local', data: h })}
-          />
-        ))}
-
-        {backendHazards.map((h) => (
-          <Marker
-            key={`api-${h.id}`}
-            coordinate={{
-              latitude: parseFloat(h.latitude),
-              longitude: parseFloat(h.longitude),
+        {/* Render markers natively for 60fps performance */}
+        <Mapbox.ShapeSource 
+          id="hazards-markers-source" 
+          shape={markerFeatures} 
+          onPress={(e) => {
+            isFeaturePressRef.current = true;
+            const feature = e.features[0];
+            const id = feature?.properties?.id;
+            if (!id) return;
+            if (id.startsWith('live-')) {
+              const data = liveHazards.find(h => `live-${h.id}` === id);
+              if (data) setSelectedHazard({ source: 'local', data });
+            } else {
+              const data = backendHazards.find(h => `api-${h.id}` === id);
+              if (data) setSelectedHazard({ source: 'api', data });
+            }
+            setTimeout(() => { isFeaturePressRef.current = false; }, 100);
+          }}
+        >
+          <Mapbox.CircleLayer
+            id="hazards-markers-layer"
+            minZoomLevel={12.5}
+            style={{
+              visibility: showHeatmap ? 'none' : 'visible',
+              circleRadius: 6,
+              circleColor: ['get', 'color'],
+              circleStrokeWidth: 2,
+              circleStrokeColor: 'white',
+              circlePitchAlignment: 'map',
             }}
-            title={h.type}
-            pinColor={HAZARD_COLORS[h.type] ?? primary}
-            onPress={() => setSelectedHazard({ source: 'api', data: h })}
           />
-        ))}
-      </MapView>
+        </Mapbox.ShapeSource>
+      </Map>
 
       {/* Per-type hazard stat cards */}
       {(liveHazards.length + backendHazards.length) > 0 && (
@@ -321,7 +413,6 @@ export default function MapScreen() {
         </View>
       )}
 
-      {/* Hazard detail panel */}
       {selectedHazard && (() => {
         const d = selectedHazard.data;
         const lat  = typeof d.latitude   === 'number' ? d.latitude   : parseFloat(d.latitude  as string);
@@ -389,4 +480,87 @@ export default function MapScreen() {
       </SafeAreaView>
     </View>
   );
+}
+
+function MapFeatureToggles({ showHeatmap, setShowHeatmap, mapTheme, setMapTheme, insets }: any) {
+  const { cameraRef, isLoaded, registerOverlay, unregisterOverlay, theme: currentTheme } = useMap();
+  const [is3D, setIs3D] = useState(false);
+  const [isRotating, setIsRotating] = useState(false);
+  const rotationRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const overlayId = useId();
+
+  const toggle3D = useCallback(() => {
+    const next = !is3D;
+    setIs3D(next);
+    if (cameraRef?.current) {
+      cameraRef.current.easeTo({ pitch: next ? 60 : 0, duration: 1000 });
+    }
+  }, [is3D, cameraRef]);
+
+  const toggleRotation = useCallback(() => {
+    const next = !isRotating;
+    setIsRotating(next);
+    if (next) {
+      let bearing = 0;
+      const rotate = () => {
+        bearing += 90;
+        cameraRef?.current?.easeTo({ heading: bearing, duration: 2000, easing: "linear" });
+      };
+      rotate();
+      rotationRef.current = setInterval(rotate, 2000);
+    } else {
+      if (rotationRef.current) clearInterval(rotationRef.current);
+      cameraRef?.current?.easeTo({ heading: 0, duration: 1000 });
+    }
+  }, [isRotating, cameraRef]);
+
+  const controlsElement = useMemo(() => (
+    <View style={[styles.featureToggles, { paddingTop: insets.top + 240 }]} pointerEvents="box-none">
+      <TouchableOpacity
+        style={[styles.featureBtn, mapTheme !== "system" && styles.featureBtnActive]}
+        onPress={() => {
+          if (mapTheme === "system") setMapTheme("dark");
+          else if (mapTheme === "dark") setMapTheme("light");
+          else setMapTheme("system");
+        }}
+      >
+        <Ionicons 
+          name={mapTheme === "system" ? "contrast-outline" : mapTheme === "dark" ? "moon-outline" : "sunny-outline"} 
+          size={20} 
+          color={mapTheme !== "system" ? "#fff" : "#444"} 
+        />
+      </TouchableOpacity>
+      <TouchableOpacity
+        style={[styles.featureBtn, showHeatmap && styles.featureBtnActive]}
+        onPress={() => setShowHeatmap(!showHeatmap)}
+      >
+        <Ionicons name="flame-outline" size={20} color={showHeatmap ? "#fff" : "#444"} />
+      </TouchableOpacity>
+      <TouchableOpacity
+        style={[styles.featureBtn, is3D && styles.featureBtnActive]}
+        onPress={toggle3D}
+      >
+        <Ionicons name="cube-outline" size={20} color={is3D ? "#fff" : "#444"} />
+      </TouchableOpacity>
+      {is3D && (
+        <TouchableOpacity
+          style={[styles.featureBtn, isRotating && styles.featureBtnActive]}
+          onPress={toggleRotation}
+        >
+          <Ionicons name="refresh-outline" size={20} color={isRotating ? "#fff" : "#444"} />
+        </TouchableOpacity>
+      )}
+    </View>
+  ), [insets.top, showHeatmap, is3D, isRotating, setShowHeatmap, toggle3D, toggleRotation]);
+
+  useEffect(() => {
+    if (isLoaded) {
+      registerOverlay(overlayId, controlsElement);
+    }
+    return () => {
+      unregisterOverlay(overlayId);
+    };
+  }, [isLoaded, overlayId, registerOverlay, unregisterOverlay, controlsElement]);
+
+  return null;
 }
