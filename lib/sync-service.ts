@@ -19,6 +19,24 @@ let syncInProgress = false;
 let lastPullMs = 0;
 const PULL_COOLDOWN_MS = 60_000;
 
+/**
+ * Normalizes a backend list response into an array. The rider API is not
+ * uniform: `/rider/hazard-logs` returns a bare array, `/rider/trips` returns a
+ * Laravel paginator (`{ data: [...] }`), and `/rider/emergency-contacts`
+ * returns `{ contacts: [...] }`. Without this, a `for...of` over the raw
+ * response throws "not iterable" and aborts the whole pull.
+ */
+function asArray(res: unknown, ...keys: string[]): any[] {
+  if (Array.isArray(res)) return res;
+  if (res && typeof res === 'object') {
+    for (const key of keys) {
+      const val = (res as Record<string, unknown>)[key];
+      if (Array.isArray(val)) return val;
+    }
+  }
+  return [];
+}
+
 export async function syncPendingData(): Promise<{ synced: number }> {
   if (syncInProgress) return { synced: 0 };
 
@@ -100,11 +118,15 @@ export async function pullFromBackend(force = false): Promise<void> {
 
   const now = Date.now();
   if (!force && now - lastPullMs < PULL_COOLDOWN_MS) return;
-  lastPullMs = now;
 
+  // Each section is isolated so one failing endpoint (or an auth/network error
+  // on a single request) cannot abort the others — a trips failure must never
+  // prevent the rider's hazard logs from loading.
+  let anySucceeded = false;
+
+  // Pull rider's own completed trips (paginated response → `.data`)
   try {
-    // Pull rider's own completed trips
-    const trips: any[] = await api.get('/rider/trips');
+    const trips = asArray(await api.get('/rider/trips'), 'data');
     for (const t of trips) {
       const routePoints = typeof t.route_points === 'string'
         ? JSON.parse(t.route_points)
@@ -133,12 +155,17 @@ export async function pullFromBackend(force = false): Promise<void> {
         );
       }
     }
+    anySucceeded = true;
+  } catch (err) {
+    console.warn('[sync] pull trips failed:', err);
+  }
 
-    // Pull rider's own hazard logs.
-    // Clear all locally-synced records first so they are replaced with authoritative
-    // backend data. Unsynced (pending upload) records are preserved and reconciled
-    // against the backend list to mark them synced if the server already has them.
-    const logs: any[] = await api.get('/rider/hazard-logs');
+  // Pull rider's own hazard logs (bare array response).
+  // Clear all locally-synced records first so they are replaced with authoritative
+  // backend data. Unsynced (pending upload) records are preserved and reconciled
+  // against the backend list to mark them synced if the server already has them.
+  try {
+    const logs = asArray(await api.get('/rider/hazard-logs'), 'data');
     await clearSyncedHazardLogs();
     for (const log of logs) {
       const reconciled = await reconcileHazardLogSynced(log.detected_at, log.type, log.id);
@@ -156,8 +183,15 @@ export async function pullFromBackend(force = false): Promise<void> {
         });
       }
     }
-    // Pull emergency contacts so SOS can reach them even on fresh install
-    const contacts: any[] = await api.get('/rider/emergency-contacts');
+    anySucceeded = true;
+  } catch (err) {
+    console.warn('[sync] pull hazard logs failed:', err);
+  }
+
+  // Pull emergency contacts so SOS can reach them even on fresh install
+  // (response shape: `{ contacts: [...] }`).
+  try {
+    const contacts = asArray(await api.get('/rider/emergency-contacts'), 'contacts', 'data');
     for (const c of contacts) {
       await upsertContact({
         id: c.id,
@@ -167,9 +201,15 @@ export async function pullFromBackend(force = false): Promise<void> {
         is_active: true,
       });
     }
-  } catch {
-    // Offline or not yet authenticated — silently skip
+    anySucceeded = true;
+  } catch (err) {
+    console.warn('[sync] pull emergency contacts failed:', err);
   }
+
+  // Only stamp the cooldown once something actually pulled, so a fully failed
+  // or unauthenticated attempt does not consume the window and block a later
+  // real pull.
+  if (anySucceeded) lastPullMs = now;
 }
 
 /**

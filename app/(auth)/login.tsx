@@ -50,7 +50,14 @@ export default function LoginScreen() {
       await SecureStore.setItemAsync('rider_token', res.token);
       await SecureStore.setItemAsync('rider_user', JSON.stringify(res.user));
       await SecureStore.setItemAsync('rider_code', res.user.username ?? '');
-      pullFromBackend().catch(() => {});
+      // Force the pull so it is never skipped by the cooldown, and await it so
+      // the rider's trips/hazard logs/contacts are in the local DB before the
+      // home screen mounts. A pull failure must not block login navigation.
+      try {
+        await pullFromBackend(true);
+      } catch {
+        // Data will load on the next sync or pull-to-refresh.
+      }
       router.replace('/(rider)/(tabs)/home');
     } catch (err: any) {
       Toast.show({ type: 'error', text1: 'Login Failed', text2: err?.message ?? 'Invalid credentials. Please try again.' });

@@ -10,6 +10,7 @@ import { StatusBar } from "expo-status-bar";
 import Toast from "react-native-toast-message";
 import { useFonts } from "expo-font";
 import * as SplashScreen from "expo-splash-screen";
+import * as SecureStore from "expo-secure-store";
 import {
     JetBrainsMono_400Regular,
     JetBrainsMono_500Medium,
@@ -43,7 +44,11 @@ export default function RootLayout() {
         (async () => {
             try {
                 await initDb();
-                await pullFromBackend();
+                // Only pull on cold start if the user is already logged in from a
+                // previous session. Pulling before login has no token, fails, and
+                // would otherwise consume the pull cooldown window.
+                const token = await SecureStore.getItemAsync("rider_token");
+                if (token) await pullFromBackend();
                 stopSync = startSyncInterval(30_000);
             } catch (err) {
                 console.error("[startup] database init failed:", err);
