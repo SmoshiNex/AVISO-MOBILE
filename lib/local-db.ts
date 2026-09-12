@@ -43,7 +43,8 @@ const SCHEMA = `
       last_hazard_type TEXT,
       triggered_at     TEXT NOT NULL,
       sms_sent         INTEGER DEFAULT 0,
-      synced           INTEGER DEFAULT 0
+      synced           INTEGER DEFAULT 0,
+      attempts         INTEGER DEFAULT 0
     );
 
     CREATE TABLE IF NOT EXISTS emergency_contacts (
@@ -61,7 +62,28 @@ async function openAndCreate(): Promise<SQLite.SQLiteDatabase> {
   // CREATE statements can fault the native layer on some Android builds.
   await handle.execAsync('PRAGMA journal_mode = WAL');
   await handle.execAsync(SCHEMA);
+  await migrate(handle);
   return handle;
+}
+
+/**
+ * Additive column migrations for devices that already created the tables —
+ * `CREATE TABLE IF NOT EXISTS` never adds columns to an existing table, and
+ * SQLite has no `ADD COLUMN IF NOT EXISTS`, so each ALTER is attempted and its
+ * "duplicate column" error swallowed.
+ */
+async function migrate(handle: SQLite.SQLiteDatabase): Promise<void> {
+  const additions = [
+    `ALTER TABLE crash_events ADD COLUMN attempts INTEGER DEFAULT 0`,
+  ];
+
+  for (const sql of additions) {
+    try {
+      await handle.execAsync(sql);
+    } catch {
+      // Column already present — nothing to do.
+    }
+  }
 }
 
 export async function initDb(): Promise<void> {
@@ -248,8 +270,8 @@ export async function reconcileHazardLogSynced(
 
 export async function saveCrashEvent(event: Omit<LocalCrashEvent, 'id'>): Promise<number> {
   const result = await getDb().runAsync(
-    `INSERT INTO crash_events (latitude, longitude, last_hazard_type, triggered_at, sms_sent, synced)
-     VALUES (?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO crash_events (latitude, longitude, last_hazard_type, triggered_at, sms_sent, synced, attempts)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
     [
       event.latitude,
       event.longitude,
@@ -257,14 +279,23 @@ export async function saveCrashEvent(event: Omit<LocalCrashEvent, 'id'>): Promis
       event.triggered_at,
       event.sms_sent ? 1 : 0,
       event.synced ? 1 : 0,
+      event.attempts,
     ],
   );
   return result.lastInsertRowId;
 }
 
-export async function getUnsyncedCrashEvents(): Promise<LocalCrashEvent[]> {
+/**
+ * Crash events still awaiting backend delivery, oldest first. `maxAttempts`
+ * excludes rows that have already exhausted the retry budget so a permanently
+ * failing event stops being replayed forever.
+ */
+export async function getUnsyncedCrashEvents(maxAttempts: number): Promise<LocalCrashEvent[]> {
   const rows = await getDb().getAllAsync<Record<string, unknown>>(
-    `SELECT * FROM crash_events WHERE synced = 0 ORDER BY triggered_at ASC`,
+    `SELECT * FROM crash_events
+     WHERE synced = 0 AND attempts < ?
+     ORDER BY triggered_at ASC`,
+    [maxAttempts],
   );
   return rows.map(rowToCrashEvent);
 }
@@ -273,6 +304,26 @@ export async function markCrashEventSynced(localId: number): Promise<void> {
   await getDb().runAsync(
     `UPDATE crash_events SET synced = 1 WHERE id = ?`,
     [localId],
+  );
+}
+
+/** Records a failed delivery so the retry budget can run out. */
+export async function incrementCrashEventAttempts(localId: number): Promise<void> {
+  await getDb().runAsync(
+    `UPDATE crash_events SET attempts = attempts + 1 WHERE id = ?`,
+    [localId],
+  );
+}
+
+/**
+ * Retires an event that must never be retried again — a request the backend
+ * rejected outright, or one too old to still be an emergency. The row is kept
+ * as a local audit trail but taken out of the send queue.
+ */
+export async function abandonCrashEvent(localId: number, maxAttempts: number): Promise<void> {
+  await getDb().runAsync(
+    `UPDATE crash_events SET attempts = ? WHERE id = ?`,
+    [maxAttempts, localId],
   );
 }
 
@@ -400,6 +451,7 @@ function rowToCrashEvent(r: Record<string, unknown>): LocalCrashEvent {
     triggered_at: r.triggered_at as string,
     sms_sent: r.sms_sent === 1,
     synced: r.synced === 1,
+    attempts: (r.attempts as number | null) ?? 0,
   };
 }
 

@@ -34,11 +34,19 @@ export async function sendEmergencyAlert(payload: SOSPayload): Promise<void> {
     triggered_at: triggeredAt,
     sms_sent: false,
     synced: false,
+    attempts: 0,
   });
 
   // Step 2 — PRIMARY: backend dispatches real SMS automatically via SkySMS.
+  // `triggered_at` is the incident's identity: if this request succeeds but its
+  // response is lost, the retry in sync-service re-sends the same timestamp and
+  // the backend recognises it instead of raising a second alert.
   try {
-    await api.post('/rider/emergency/sos', { latitude, longitude });
+    await api.post('/rider/emergency/sos', {
+      latitude,
+      longitude,
+      triggered_at: triggeredAt,
+    });
     await markCrashEventSynced(crashEventId);
     return; // SMS dispatched server-side — no composer needed.
   } catch (err) {

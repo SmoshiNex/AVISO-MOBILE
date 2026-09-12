@@ -119,6 +119,8 @@ export type LocalCrashEvent = {
   triggered_at: string;
   sms_sent: boolean;
   synced: boolean;
+  /** Backend delivery attempts so far. Caps the retry queue in sync-service. */
+  attempts: number;
 };
 
 // Local SQLite emergency contact (with local-only is_active toggle)

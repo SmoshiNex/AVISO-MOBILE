@@ -11,6 +11,8 @@ import {
   clearSyncedHazardLogs,
   getUnsyncedCrashEvents,
   markCrashEventSynced,
+  incrementCrashEventAttempts,
+  abandonCrashEvent,
   upsertContact,
 } from './local-db';
 import { resolveArea } from './area-resolver';
@@ -18,6 +20,12 @@ import { resolveArea } from './area-resolver';
 let syncInProgress = false;
 let lastPullMs = 0;
 const PULL_COOLDOWN_MS = 60_000;
+
+/** Transient-failure budget for an undelivered SOS before it is retired. */
+const MAX_SOS_SYNC_ATTEMPTS = 10;
+
+/** Past this age a crash event is history, not an emergency to dispatch. */
+const SOS_SYNC_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
 /**
  * Normalizes a backend list response into an array. The rider API is not
@@ -87,22 +95,51 @@ async function syncHazardLogs(): Promise<number> {
   return count;
 }
 
+/**
+ * Delivers SOS events that never reached the backend — the deferred SkySMS
+ * path, so an SOS raised while offline still notifies contacts and reaches the
+ * admin dashboard once connectivity returns.
+ *
+ * The queue is deliberately bounded. An unbounded version re-POSTed a stuck
+ * event every 30 seconds for the life of the install, and because the backend
+ * used to de-duplicate only against *pending* alerts, every replay that landed
+ * after an admin resolved the alert raised a brand-new one. Three independent
+ * stopping conditions now apply: client errors are never retried, attempts are
+ * capped, and events older than a day are retired.
+ */
 async function syncCrashEvents(): Promise<void> {
-  const events = await getUnsyncedCrashEvents();
+  const events = await getUnsyncedCrashEvents(MAX_SOS_SYNC_ATTEMPTS);
   if (events.length === 0) return;
 
   for (const event of events) {
+    // Too old to still be an emergency worth dispatching.
+    if (Date.now() - new Date(event.triggered_at).getTime() > SOS_SYNC_MAX_AGE_MS) {
+      await abandonCrashEvent(event.id, MAX_SOS_SYNC_ATTEMPTS);
+      continue;
+    }
+
     try {
       await api.post('/rider/emergency/sos', {
         latitude: event.latitude,
         longitude: event.longitude,
+        // The incident's identity — lets the backend recognise a replay of an
+        // alert it has already recorded instead of creating a duplicate.
+        triggered_at: event.triggered_at,
       });
       await markCrashEventSynced(event.id);
-    } catch {
-      // Leave unsynced so this event is retried on the next sync interval.
-      // This is the deferred SkySMS path: an SOS raised while offline reaches
-      // the backend here once connectivity returns, notifying contacts and
-      // surfacing the alert on the admin dashboard.
+    } catch (err) {
+      const status = (err as { status?: number }).status;
+
+      // A rejected request (expired token, validation failure) will never
+      // succeed by repeating it. Retire the event rather than loop forever.
+      if (status !== undefined && status >= 400 && status < 500) {
+        console.warn('[sync-service] SOS rejected by backend, abandoning', status);
+        await abandonCrashEvent(event.id, MAX_SOS_SYNC_ATTEMPTS);
+        continue;
+      }
+
+      // Transient failure — spend one attempt and try again next interval.
+      await incrementCrashEventAttempts(event.id);
     }
   }
 }
