@@ -398,7 +398,7 @@ export default function EmergencyContactsScreen() {
             {/* Contact list */}
             <FlatList
               data={filteredPhoneContacts}
-              keyExtractor={(item) => item.id ?? item.name ?? String(Math.random())}
+              keyExtractor={(item, index) => (item as { id?: string }).id ?? item.name ?? String(index)}
               renderItem={({ item }) => (
                 <TouchableOpacity
                   style={[styles.pickerRow, { borderBottomColor: border }]}

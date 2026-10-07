@@ -22,3 +22,24 @@ export function estimateDistance(
   const distanceCm = (realWidthCm * FOCAL_LENGTH_PX) / pixelWidth;
   return Math.round(distanceCm / 100); // convert cm → meters, rounded
 }
+
+export type DistanceWord = 'near' | 'ahead' | 'far';
+
+const NEAR_MAX_M = 5;
+const AHEAD_MAX_M = 15;
+
+/**
+ * The camera is not calibrated yet, so the meter estimate is only rough.
+ * Riders are shown a distance word instead of a number.
+ */
+export function distanceWord(meters: number): DistanceWord {
+  if (meters < NEAR_MAX_M) return 'near';
+  if (meters <= AHEAD_MAX_M) return 'ahead';
+  return 'far';
+}
+
+export const DISTANCE_WORD_LABEL: Record<DistanceWord, string> = {
+  near: 'Near · slow down',
+  ahead: 'Ahead',
+  far: 'Far ahead',
+};

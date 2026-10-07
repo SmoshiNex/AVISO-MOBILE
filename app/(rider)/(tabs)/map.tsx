@@ -15,6 +15,7 @@ import Mapbox from '@rnmapbox/maps';
 import Toast from 'react-native-toast-message';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { useTripContext } from '@/contexts/trip-context';
+import { BarangayBoundaries } from '@/components/BarangayBoundaries';
 import { getTripById, getHazardLogsForTrip, getHazardLogs } from '@/lib/local-db';
 import { api } from '@/lib/api-client';
 import { HAZARD_COLORS } from '@/constants/hazards';
@@ -25,8 +26,6 @@ const HAZARD_STAT_GROUPS = [
   { label: 'Pothole',       types: ['Pothole'],                                                          icon: 'alert-circle-outline'  },
   { label: 'Excavation',    types: ['Road Excavation'],                                                  icon: 'construct-outline'     },
   { label: 'Barrier',       types: ['Road Barrier'],                                                     icon: 'stop-circle-outline'   },
-  { label: 'Traffic Sign',  types: ['Traffic Sign'],                                                     icon: 'warning-outline'       },
-  { label: 'Traffic Light', types: ['Traffic Light Red', 'Traffic Light Orange', 'Traffic Light Green'], icon: 'stopwatch-outline'     },
 ] as const;
 
 type SelectedHazard = { source: 'local'; data: LocalHazardLog } | { source: 'api'; data: HazardLog };
@@ -76,6 +75,7 @@ export default function MapScreen() {
   const [mapTheme, setMapTheme] = useState<"system" | "light" | "dark">("system");
 
   const [showHeatmap, setShowHeatmap] = useState(false);
+  const [showBarangays, setShowBarangays] = useState(true);
   const [currentZoom, setCurrentZoom] = useState(14);
 
   const heatmapData = useMemo(() => {
@@ -239,6 +239,8 @@ export default function MapScreen() {
             </MapMarker>
           )}
 
+          <BarangayBoundaries visible={showBarangays} />
+
           <Mapbox.ShapeSource 
             id="history-hazards-source" 
             shape={historyMarkerFeatures} 
@@ -331,6 +333,8 @@ export default function MapScreen() {
         <MapFeatureToggles 
           showHeatmap={showHeatmap} 
           setShowHeatmap={setShowHeatmap} 
+          showBarangays={showBarangays}
+          setShowBarangays={setShowBarangays}
           mapTheme={mapTheme}
           setMapTheme={setMapTheme}
           insets={insets} 
@@ -349,6 +353,8 @@ export default function MapScreen() {
             <MarkerDot color="#22C55E" />
           </MapMarker>
         )}
+
+        <BarangayBoundaries visible={showBarangays} />
 
         {/* Render markers natively for 60fps performance */}
         <Mapbox.ShapeSource 
@@ -482,7 +488,7 @@ export default function MapScreen() {
   );
 }
 
-function MapFeatureToggles({ showHeatmap, setShowHeatmap, mapTheme, setMapTheme, insets }: any) {
+function MapFeatureToggles({ showHeatmap, setShowHeatmap, showBarangays, setShowBarangays, mapTheme, setMapTheme, insets }: any) {
   const { cameraRef, isLoaded, registerOverlay, unregisterOverlay, theme: currentTheme } = useMap();
   const [is3D, setIs3D] = useState(false);
   const [isRotating, setIsRotating] = useState(false);
@@ -537,6 +543,13 @@ function MapFeatureToggles({ showHeatmap, setShowHeatmap, mapTheme, setMapTheme,
         <Ionicons name="flame-outline" size={20} color={showHeatmap ? "#fff" : "#444"} />
       </TouchableOpacity>
       <TouchableOpacity
+        style={[styles.featureBtn, showBarangays && styles.featureBtnActive]}
+        onPress={() => setShowBarangays(!showBarangays)}
+        accessibilityLabel="Toggle barangay boundaries"
+      >
+        <Ionicons name="map-outline" size={20} color={showBarangays ? "#fff" : "#444"} />
+      </TouchableOpacity>
+      <TouchableOpacity
         style={[styles.featureBtn, is3D && styles.featureBtnActive]}
         onPress={toggle3D}
       >
@@ -551,7 +564,7 @@ function MapFeatureToggles({ showHeatmap, setShowHeatmap, mapTheme, setMapTheme,
         </TouchableOpacity>
       )}
     </View>
-  ), [insets.top, showHeatmap, is3D, isRotating, setShowHeatmap, toggle3D, toggleRotation]);
+  ), [insets.top, showHeatmap, showBarangays, is3D, isRotating, setShowHeatmap, setShowBarangays, toggle3D, toggleRotation]);
 
   useEffect(() => {
     if (isLoaded) {

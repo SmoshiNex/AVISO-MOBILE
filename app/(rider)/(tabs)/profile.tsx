@@ -136,6 +136,16 @@ export default function ProfileScreen() {
       onPress: () => router.push('/(rider)/personal-information'),
     },
     {
+      icon: 'hardware-chip-outline',
+      label: 'IoT Device',
+      onPress: () => router.push('/(rider)/iot-device'),
+    },
+    {
+      icon: 'pulse-outline',
+      label: 'Crash Detection Logs',
+      onPress: () => router.push('/(rider)/crash-logs'),
+    },
+    {
       icon: 'warning-outline',
       label: 'My Detections',
       onPress: () => router.push('/(rider)/hazard-logs'),

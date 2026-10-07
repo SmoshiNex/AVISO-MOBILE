@@ -84,19 +84,24 @@
         }
       ],
       [
-        "react-native-vision-camera",
-        {
-          "cameraPermissionText": "AVISO uses the camera to detect road hazards.",
-          "enableMicrophonePermission": false
-        }
-      ],
-      [
         "@kartik512/react-native-uvc-camera",
         {
           "cameraPermissionText": "AVISO uses the camera to detect road hazards."
         }
       ],
-      "@rnmapbox/maps"
+      "@rnmapbox/maps",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true,
+            "packagingOptions": {
+              "pickFirst": ["**/libc++_shared.so"]
+            }
+          }
+        }
+      ],
+      "expo-asset"
     ],
     "experiments": {
       "typedRoutes": true,

@@ -43,6 +43,11 @@ app-example
 /ios
 /android
 
+# Gradle build output inside local native modules
+modules/**/android/build/
+modules/**/android/.gradle/
+modules/**/android/.cxx/
+
 # Claude AI — session files, plans, memory, skill cache
 .claude/
 

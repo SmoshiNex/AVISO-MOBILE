@@ -1,0 +1,37 @@
+{
+  "name": "@kartik512/react-native-uvc-camera",
+  "version": "0.2.0-aviso.1",
+  "description": "UVC Camera support for React Native (vendored for AVISO: adds live on-device hazard detection)",
+  "main": "src/index.tsx",
+  "types": "src/index.tsx",
+  "react-native": "src/index.tsx",
+  "files": [
+    "src",
+    "android",
+    "app.plugin.js",
+    "plugin"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/KartikDevarde2601/react-native-uvc-camera.git"
+  },
+  "peerDependencies": {
+    "@expo/config-plugins": ">=7.0.0",
+    "react": "*",
+    "react-native": "*"
+  },
+  "peerDependenciesMeta": {
+    "@expo/config-plugins": {
+      "optional": true
+    }
+  },
+  "codegenConfig": {
+    "name": "UvcCameraViewSpec",
+    "type": "modules",
+    "jsSrcsDir": "src",
+    "android": {
+      "javaPackageName": "com.uvccamera"
+    }
+  }
+}

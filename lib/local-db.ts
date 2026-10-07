@@ -1,5 +1,6 @@
 import * as SQLite from 'expo-sqlite';
-import type { LocalTrip, LocalHazardLog, LocalCrashEvent, LocalEmergencyContact } from '@/types';
+import type { LocalTrip, LocalHazardLog, LocalCrashEvent, LocalEmergencyContact, LocalRideEvent } from '@/types';
+import { ROAD_HAZARD_TYPES } from '@/constants/hazards';
 
 let db: SQLite.SQLiteDatabase | null = null;
 
@@ -47,6 +48,22 @@ const SCHEMA = `
       attempts         INTEGER DEFAULT 0
     );
 
+    CREATE TABLE IF NOT EXISTS ride_events (
+      id                INTEGER PRIMARY KEY AUTOINCREMENT,
+      event_uid         TEXT NOT NULL UNIQUE,
+      event_type        TEXT NOT NULL,
+      latitude          REAL NOT NULL,
+      longitude         REAL NOT NULL,
+      acceleration_peak REAL NOT NULL,
+      vertical_g        REAL,
+      horizontal_g      REAL,
+      gyro_peak_dps     REAL,
+      tilt_deg          REAL,
+      detected_at       TEXT NOT NULL,
+      synced            INTEGER DEFAULT 0,
+      attempts          INTEGER DEFAULT 0
+    );
+
     CREATE TABLE IF NOT EXISTS emergency_contacts (
       id             INTEGER PRIMARY KEY,
       name           TEXT NOT NULL,
@@ -75,6 +92,7 @@ async function openAndCreate(): Promise<SQLite.SQLiteDatabase> {
 async function migrate(handle: SQLite.SQLiteDatabase): Promise<void> {
   const additions = [
     `ALTER TABLE crash_events ADD COLUMN attempts INTEGER DEFAULT 0`,
+    `ALTER TABLE crash_events ADD COLUMN event_uid TEXT`,
   ];
 
   for (const sql of additions) {
@@ -238,16 +256,30 @@ export async function getUnsyncedHazardLogs(): Promise<LocalHazardLog[]> {
   return rows.map(rowToHazardLog);
 }
 
+// Drops queued light/sign rows recorded before only road hazards were logged;
+// the server rejects those types, so they would otherwise retry forever.
+export async function deleteNonRoadHazardLogs(): Promise<void> {
+  const placeholders = ROAD_HAZARD_TYPES.map(() => '?').join(', ');
+  await getDb().runAsync(
+    `DELETE FROM hazard_logs WHERE type NOT IN (${placeholders})`,
+    [...ROAD_HAZARD_TYPES],
+  );
+}
+
 // Removes all locally-synced records so pullFromBackend can replace them with
 // authoritative backend data. Unsynced (pending) records are never touched.
 export async function clearSyncedHazardLogs(): Promise<void> {
   await getDb().runAsync('DELETE FROM hazard_logs WHERE synced = 1');
 }
 
-export async function markHazardLogSynced(localId: number, remoteId: number): Promise<void> {
+export async function markHazardLogSynced(
+  localId: number,
+  remoteId: number,
+  area?: string,
+): Promise<void> {
   await getDb().runAsync(
-    `UPDATE hazard_logs SET synced = 1, remote_id = ? WHERE id = ?`,
-    [remoteId, localId],
+    `UPDATE hazard_logs SET synced = 1, remote_id = ?, area = COALESCE(?, area) WHERE id = ?`,
+    [remoteId, area ?? null, localId],
   );
 }
 
@@ -270,8 +302,8 @@ export async function reconcileHazardLogSynced(
 
 export async function saveCrashEvent(event: Omit<LocalCrashEvent, 'id'>): Promise<number> {
   const result = await getDb().runAsync(
-    `INSERT INTO crash_events (latitude, longitude, last_hazard_type, triggered_at, sms_sent, synced, attempts)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO crash_events (latitude, longitude, last_hazard_type, triggered_at, sms_sent, synced, attempts, event_uid)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       event.latitude,
       event.longitude,
@@ -280,6 +312,7 @@ export async function saveCrashEvent(event: Omit<LocalCrashEvent, 'id'>): Promis
       event.sms_sent ? 1 : 0,
       event.synced ? 1 : 0,
       event.attempts,
+      event.event_uid ?? null,
     ],
   );
   return result.lastInsertRowId;
@@ -452,6 +485,7 @@ function rowToCrashEvent(r: Record<string, unknown>): LocalCrashEvent {
     sms_sent: r.sms_sent === 1,
     synced: r.synced === 1,
     attempts: (r.attempts as number | null) ?? 0,
+    event_uid: (r.event_uid as string | null) ?? undefined,
   };
 }
 
@@ -463,4 +497,70 @@ function rowToContact(r: Record<string, unknown>): LocalEmergencyContact {
     contact_number: r.contact_number as string,
     is_active: r.is_active === 1,
   };
+}
+
+// ─── RIDE EVENTS (IoT crash-detection log upload queue) ──────────────────────
+// Every classification from the IoT unit is queued here first, so nothing is
+// lost while the phone has no signal. sync-service uploads and then prunes.
+
+export async function queueRideEvent(event: Omit<LocalRideEvent, 'id' | 'attempts'>): Promise<void> {
+  await getDb().runAsync(
+    `INSERT OR IGNORE INTO ride_events
+       (event_uid, event_type, latitude, longitude, acceleration_peak, vertical_g, horizontal_g, gyro_peak_dps, tilt_deg, detected_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      event.event_uid,
+      event.event_type,
+      event.latitude,
+      event.longitude,
+      event.acceleration_peak,
+      event.vertical_g,
+      event.horizontal_g,
+      event.gyro_peak_dps,
+      event.tilt_deg,
+      event.detected_at,
+    ],
+  );
+}
+
+export async function getUnsyncedRideEvents(limit: number, maxAttempts: number): Promise<LocalRideEvent[]> {
+  const rows = await getDb().getAllAsync<Record<string, unknown>>(
+    `SELECT * FROM ride_events WHERE synced = 0 AND attempts < ? ORDER BY detected_at ASC LIMIT ?`,
+    [maxAttempts, limit],
+  );
+  return rows.map((r) => ({
+    id: r.id as number,
+    event_uid: r.event_uid as string,
+    event_type: r.event_type as LocalRideEvent['event_type'],
+    latitude: r.latitude as number,
+    longitude: r.longitude as number,
+    acceleration_peak: r.acceleration_peak as number,
+    vertical_g: (r.vertical_g as number | null) ?? null,
+    horizontal_g: (r.horizontal_g as number | null) ?? null,
+    gyro_peak_dps: (r.gyro_peak_dps as number | null) ?? null,
+    tilt_deg: (r.tilt_deg as number | null) ?? null,
+    detected_at: r.detected_at as string,
+    attempts: (r.attempts as number | null) ?? 0,
+  }));
+}
+
+export async function countPendingRideEvents(maxAttempts: number): Promise<number> {
+  const row = await getDb().getFirstAsync<{ n: number }>(
+    `SELECT COUNT(*) AS n FROM ride_events WHERE synced = 0 AND attempts < ?`,
+    [maxAttempts],
+  );
+  return row?.n ?? 0;
+}
+
+export async function markRideEventSynced(eventUid: string): Promise<void> {
+  await getDb().runAsync(`UPDATE ride_events SET synced = 1 WHERE event_uid = ?`, [eventUid]);
+}
+
+export async function setRideEventAttempts(eventUid: string, attempts: number): Promise<void> {
+  await getDb().runAsync(`UPDATE ride_events SET attempts = ? WHERE event_uid = ?`, [attempts, eventUid]);
+}
+
+/** Uploaded rows are kept on the server; drop the local copies. */
+export async function pruneSyncedRideEvents(): Promise<void> {
+  await getDb().runAsync(`DELETE FROM ride_events WHERE synced = 1`);
 }

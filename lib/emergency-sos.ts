@@ -6,6 +6,8 @@ export type SOSPayload = {
   latitude: number;
   longitude: number;
   lastHazardType?: string;
+  /** Crash id from the IoT unit when the SOS started from a unit crash. */
+  eventUid?: string;
 };
 
 /**
@@ -22,8 +24,8 @@ export type SOSPayload = {
  *    The crash event stays unsynced so background sync re-POSTs (and SkySMS
  *    sends) once connectivity returns.
  */
-export async function sendEmergencyAlert(payload: SOSPayload): Promise<void> {
-  const { latitude, longitude, lastHazardType } = payload;
+export async function sendEmergencyAlert(payload: SOSPayload): Promise<boolean> {
+  const { latitude, longitude, lastHazardType, eventUid } = payload;
   const triggeredAt = new Date().toISOString();
 
   // Step 1 — persist locally before anything else
@@ -35,6 +37,7 @@ export async function sendEmergencyAlert(payload: SOSPayload): Promise<void> {
     sms_sent: false,
     synced: false,
     attempts: 0,
+    event_uid: eventUid,
   });
 
   // Step 2 — PRIMARY: backend dispatches real SMS automatically via SkySMS.
@@ -46,9 +49,11 @@ export async function sendEmergencyAlert(payload: SOSPayload): Promise<void> {
       latitude,
       longitude,
       triggered_at: triggeredAt,
+      // Lets the server merge this with the unit's own backup report.
+      ...(eventUid && { event_uid: eventUid }),
     });
     await markCrashEventSynced(crashEventId);
-    return; // SMS dispatched server-side — no composer needed.
+    return true; // SMS dispatched server-side — no composer needed.
   } catch (err) {
     // Offline or backend unreachable — fall through to the device composer.
     // Leave the crash event unsynced so background sync retries the backend
@@ -58,10 +63,10 @@ export async function sendEmergencyAlert(payload: SOSPayload): Promise<void> {
 
   // Step 3 — FALLBACK: open the native SMS composer for a manual send.
   const contactNumbers = await getActiveContactNumbers();
-  if (contactNumbers.length === 0) return;
+  if (contactNumbers.length === 0) return false;
 
   const available = await SMS.isAvailableAsync();
-  if (!available) return;
+  if (!available) return false;
 
   const message =
     `AVISO EMERGENCY ALERT\n` +
@@ -78,6 +83,7 @@ export async function sendEmergencyAlert(payload: SOSPayload): Promise<void> {
     `Fire: 991-2267`;
 
   await SMS.sendSMSAsync(contactNumbers, message);
+  return false; // the server was not reached
 }
 
 /**

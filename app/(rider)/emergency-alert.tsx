@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Text, TouchableOpacity, Animated, Vibration } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router, useFocusEffect } from 'expo-router';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { Audio } from 'expo-av';
 import * as Location from 'expo-location';
 import { Ionicons } from '@expo/vector-icons';
 import Toast from 'react-native-toast-message';
 import { sendEmergencyAlert } from '@/lib/emergency-sos';
 import { useTripContext } from '@/contexts/trip-context';
+import { useIot } from '@/contexts/iot-context';
 import { generateJarvisAudio } from '@/lib/openai-tts';
 import { SOS_TEXT, SOS_CACHE_KEY } from '@/constants/sos';
 import { styles } from '@/styles/emergency-alert.style';
@@ -34,6 +35,9 @@ export default function EmergencyAlertScreen() {
   const isSentRef = useRef(false);
   const isSendingRef = useRef(false);
   const { isActive, endTrip } = useTripContext();
+  // Set when the countdown was started by the IoT unit's crash detection.
+  const { eventId } = useLocalSearchParams<{ eventId?: string }>();
+  const { cancelCrash, confirmSosSent } = useIot();
 
   // Pulse ring animation — permanent cosmetic loop
   useEffect(() => {
@@ -128,14 +132,17 @@ export default function EmergencyAlertScreen() {
     }
 
     try {
-      const location = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.High,
-      }).catch(() => null);
+      const location =
+        (await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High }).catch(() => null)) ??
+        (await Location.getLastKnownPositionAsync().catch(() => null));
 
-      await sendEmergencyAlert({
+      const delivered = await sendEmergencyAlert({
         latitude: location?.coords.latitude ?? 6.9214,
         longitude: location?.coords.longitude ?? 122.079,
+        eventUid: eventId,
       });
+      // The server has it: the unit can skip its own backup report.
+      if (eventId && delivered) confirmSosSent(eventId);
 
       lastSosSentAt = Date.now();
       isSentRef.current = true;
@@ -151,7 +158,11 @@ export default function EmergencyAlertScreen() {
     }
   };
 
-  const handleCancel = () => router.back();
+  const handleCancel = () => {
+    // Stops the unit's alarm and its backup SOS.
+    if (eventId) cancelCrash(eventId);
+    router.back();
+  };
 
   const handleSendNow = () => {
     if (intervalRef.current) {
@@ -207,7 +218,7 @@ export default function EmergencyAlertScreen() {
         <View style={styles.actions}>
           <TouchableOpacity style={styles.cancelBtn} onPress={handleCancel} activeOpacity={0.85}>
             <Ionicons name="close-circle-outline" size={20} color="#EF4444" style={{ marginRight: 8 }} />
-            <Text style={styles.cancelBtnText}>I'm OK — Cancel</Text>
+            <Text style={styles.cancelBtnText}>I&apos;m OK — Cancel</Text>
           </TouchableOpacity>
 
           <TouchableOpacity

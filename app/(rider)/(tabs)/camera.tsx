@@ -4,18 +4,20 @@ import {
     Text,
     TouchableOpacity,
     StyleSheet,
-    Modal,
-    useWindowDimensions,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { router, useFocusEffect } from "expo-router";
-import { CameraView, useCameraPermissions } from "expo-camera";
+import { useIsFocused } from "@react-navigation/native";
+import { useCameraPermissions } from "expo-camera";
 import {
     UvcCamera,
+    PhoneDetectionCamera,
     CameraErrorCodes,
     type UvcCameraHandle,
     type DeviceInfo as UvcDeviceInfo,
     type CameraError as UvcCameraError,
+    type RawDetection,
+    type DetectionInfo,
 } from "@kartik512/react-native-uvc-camera";
 import * as Location from "expo-location";
 import { Accelerometer, Gyroscope } from "expo-sensors";
@@ -23,36 +25,47 @@ import { Ionicons } from "@expo/vector-icons";
 import Toast from "react-native-toast-message";
 import { useThemeColor } from "@/hooks/use-theme-color";
 import { useTripContext } from "@/contexts/trip-context";
-import { DemoDetectionSource } from "@/lib/demo-detection-source";
-import { announceDetection, stopAllSpeech } from "@/lib/voice-queue";
-import { selectPriorityDetection } from "@/lib/select-priority-detection";
+import { classify } from "@/lib/detection-classifier";
+import { announce, stopAllSpeech } from "@/lib/voice-queue";
+import { AlertGate, alertKey, type Alert } from "@/lib/alert-gate";
+import { useArHeading } from "@/hooks/use-ar-heading";
+import { AlertCard } from "@/components/ar/AlertCard";
+import { CompassArrow } from "@/components/ar/CompassArrow";
+import { SensorHud } from "@/components/SensorHud";
 import { saveHazardLog, incrementTripHazards } from "@/lib/local-db";
 import { api } from "@/lib/api-client";
 import * as Network from "expo-network";
 import * as SecureStore from "expo-secure-store";
-import { resolveArea } from "@/lib/area-resolver";
-import { HAZARD_COLORS, HAZARD_WARNINGS } from "@/constants/hazards";
-import {
-    CRASH_G_THRESHOLD,
-    CRASH_ANGULAR_THRESHOLD,
-} from "@/constants/detections";
-import { classifyRideState, type RideState } from "@/lib/ride-state-classifier";
+import { MODEL_CLASS_NAMES, modelClassColor, modelClassName, isRoadHazard } from "@/constants/hazards";
+import { classifyRideState } from "@/lib/ride-state-classifier";
 import type { DetectionResult } from "@/types";
-import roadSigns from "@/assets/data/road_sign_instructions.json";
 import { styles } from "@/styles/camera.style";
 
 type SourceMode = "native" | "otg";
 
-const RIDE_STATE_META: Record<RideState, { label: string; color: string; range: string }> = {
-    normal: { label: "Normal Riding", color: "#22C55E", range: "< 1.3g" },
-    hard_braking: { label: "Hard Braking", color: "#F59E0B", range: "1.3–2.5g, stable (low rotation)" },
-    bump: { label: "Bump / Pothole", color: "#0274DF", range: "1.3–2.5g, with rotation" },
-    crash: { label: "Crash", color: "#EF4444", range: "≥ 2.5g + strong rotation" },
-};
+const SOURCE_OPTIONS: { mode: SourceMode; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
+    { mode: "otg", label: "USB Cam", icon: "hardware-chip-outline" },
+    { mode: "native", label: "Phone Cam", icon: "camera-outline" },
+];
 
-const detectionSource = new DemoDetectionSource(3500);
+// Decides when an object deserves a popup + voice (once per encounter).
+const alertGate = new AlertGate();
+const ALERT_CARD_MS = 4000;
+// Sign/light popups follow their object: shown at least this long, at most
+// this long, and closed this long after the object leaves the video.
+const FOLLOW_MIN_MS = 2500;
+const FOLLOW_MAX_MS = 8000;
+const FOLLOW_LOST_CLOSE_MS = 700;
+
+type BBox = DetectionResult["bbox"];
+type TrackedAlert = { key: string; bbox: BBox; lastSeenAt: number; shownAt: number };
+
+const centerDistance = (a: BBox, b: BBox) =>
+    Math.hypot(a.x + a.w / 2 - (b.x + b.w / 2), a.y + a.h / 2 - (b.y + b.h / 2));
 const LOG_COOLDOWN_MS = 8000;
 const lastLoggedAt: Record<string, number> = {};
+
+type DetectorStats = { fps: number; ms: number; delegate: string };
 
 export default function CameraScreen() {
     const [permission, requestPermission] = useCameraPermissions();
@@ -61,22 +74,43 @@ export default function CameraScreen() {
     const [uvcDevice, setUvcDevice] = useState<UvcDeviceInfo | null>(null);
     const [uvcDisconnected, setUvcDisconnected] = useState(false);
     const [detections, setDetections] = useState<DetectionResult[]>([]);
-    const [warningText, setWarningText] = useState<string | null>(null);
+    const [activeAlert, setActiveAlert] = useState<{ alert: Alert; id: number } | null>(null);
+    // Latest box of the object a sign/light popup is attached to (null = out of view).
+    const [trackedBbox, setTrackedBbox] = useState<BBox | null | undefined>(undefined);
+    const trackRef = useRef<TrackedAlert | null>(null);
+    const [arrowEnabled, setArrowEnabled] = useState(true);
     const [accelMag, setAccelMag] = useState(0);
     const [gyroMag, setGyroMag] = useState(0);
-    const [showLegend, setShowLegend] = useState(false);
     const rideState = useMemo(
         () => classifyRideState(accelMag, gyroMag),
         [accelMag, gyroMag],
     );
-    const { width: screenWidth, height: screenHeight } = useWindowDimensions();
     const { trip, isActive, startTrip, endTrip } = useTripContext();
-    const warningTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const insets = useSafeAreaInsets();
+    // World-locked arrow direction + rider GPS, live for the whole ride.
+    const { angleRef, angle, visibility, positionRef, compassRef } = useArHeading(isActive);
+    const alertTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     const detectionClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
         null,
     );
     const riderCodeRef = useRef<string>("");
     const primary = useThemeColor({}, "primary");
+    const isFocused = useIsFocused();
+    // The on-device model only runs while this tab is open and a ride is live.
+    const detectionEnabled = isFocused && isActive;
+    const [detectorStats, setDetectorStats] = useState<DetectorStats | null>(null);
+    const statsRef = useRef({ frames: 0, since: 0 });
+    // How many of each object are in view right now, most frequent first.
+    const objectCounts = useMemo(() => {
+        const counts = new Map<string, { label: string; color: string; count: number }>();
+        for (const d of detections) {
+            const label = modelClassName(d.classIndex);
+            const entry = counts.get(label);
+            if (entry) entry.count += 1;
+            else counts.set(label, { label, color: modelClassColor(d.classIndex), count: 1 });
+        }
+        return [...counts.values()].sort((a, b) => b.count - a.count);
+    }, [detections]);
 
     const handleDetections = useCallback(
         async (results: DetectionResult[]) => {
@@ -85,25 +119,83 @@ export default function CameraScreen() {
                 return;
             }
 
+            // Popup + voice: at most one alert, and only for objects that are
+            // new — not on every frame the object stays in view.
+            const now = Date.now();
+            const alert = alertGate.process(results, now, positionRef.current);
+            if (alert) {
+                setActiveAlert({ alert, id: now });
+                if (alertTimer.current) clearTimeout(alertTimer.current);
+                if (alert.kind === "road") {
+                    // Road hazards: fixed informational card.
+                    trackRef.current = null;
+                    setTrackedBbox(undefined);
+                    alertTimer.current = setTimeout(() => setActiveAlert(null), ALERT_CARD_MS);
+                } else {
+                    // Signs/lights: the card follows the object (capped in time).
+                    trackRef.current = {
+                        key: alert.key,
+                        bbox: alert.detection.bbox,
+                        lastSeenAt: now,
+                        shownAt: now,
+                    };
+                    setTrackedBbox(alert.detection.bbox);
+                    alertTimer.current = setTimeout(() => {
+                        trackRef.current = null;
+                        setActiveAlert(null);
+                    }, FOLLOW_MAX_MS);
+                }
+                if (alert.voice) announce(alert.voice, alert.priority);
+            } else if (trackRef.current) {
+                const track = trackRef.current;
+                let best: DetectionResult | null = null;
+                for (const d of results) {
+                    if (alertKey(d) !== track.key) continue;
+                    if (!best || centerDistance(d.bbox, track.bbox) < centerDistance(best.bbox, track.bbox)) best = d;
+                }
+                if (best) {
+                    track.bbox = best.bbox;
+                    track.lastSeenAt = now;
+                    setTrackedBbox(best.bbox);
+                } else if (
+                    now - track.lastSeenAt >= FOLLOW_LOST_CLOSE_MS &&
+                    now - track.shownAt >= FOLLOW_MIN_MS
+                ) {
+                    trackRef.current = null;
+                    if (alertTimer.current) clearTimeout(alertTimer.current);
+                    setActiveAlert(null);
+                } else {
+                    setTrackedBbox(null);
+                }
+            }
+
             if (results.length > 0) {
-                if (detectionClearTimerRef.current)
+                if (detectionClearTimerRef.current) {
                     clearTimeout(detectionClearTimerRef.current);
+                    detectionClearTimerRef.current = null;
+                }
                 setDetections(results);
             } else {
-                detectionClearTimerRef.current = setTimeout(
-                    () => setDetections([]),
-                    1500,
-                );
+                // One pending clear at a time, or boxes flicker at real frame rates.
+                if (!detectionClearTimerRef.current) {
+                    detectionClearTimerRef.current = setTimeout(() => {
+                        detectionClearTimerRef.current = null;
+                        setDetections([]);
+                    }, 1500);
+                }
                 return;
             }
 
             for (const result of results) {
                 if (result.confidence < 0.6) continue;
 
+                // Lights and signs only warn the rider below; only road
+                // hazards are recorded.
                 const now = Date.now();
                 if (
-                    !lastLoggedAt[result.type] ||
-                    now - lastLoggedAt[result.type] > LOG_COOLDOWN_MS
+                    isRoadHazard(result.type) &&
+                    (!lastLoggedAt[result.type] ||
+                        now - lastLoggedAt[result.type] > LOG_COOLDOWN_MS)
                 ) {
                     lastLoggedAt[result.type] = now;
 
@@ -112,7 +204,6 @@ export default function CameraScreen() {
                             await Location.getLastKnownPositionAsync();
                         if (location) {
                             const { latitude, longitude } = location.coords;
-                            const area = resolveArea(latitude, longitude);
                             const detected_at = new Date().toISOString();
 
                             // Online-first: POST to backend immediately when connected.
@@ -125,6 +216,9 @@ export default function CameraScreen() {
 
                             let synced = false;
                             let remoteId: number | undefined;
+                            // The server resolves the real barangay from the
+                            // GPS point; until then the area stays unknown.
+                            let area: string | undefined;
 
                             if (isOnline) {
                                 try {
@@ -136,12 +230,12 @@ export default function CameraScreen() {
                                             longitude,
                                             confidence: result.confidence,
                                             distance: result.distance ?? null,
-                                            area,
                                             rider_code: riderCodeRef.current,
                                             detected_at,
                                         },
                                     )) as any;
                                     remoteId = response?.data?.id ?? undefined;
+                                    area = response?.data?.area ?? undefined;
                                     synced = !!remoteId;
                                 } catch {
                                     // Backend unreachable — save to offline queue, batch sync retries
@@ -166,40 +260,9 @@ export default function CameraScreen() {
                         // Location unavailable — skip logging
                     }
                 }
-
-                if (result.type !== "Traffic Sign") {
-                    const warning = HAZARD_WARNINGS[result.type];
-                    if (warning) {
-                        setWarningText(warning);
-                        if (warningTimer.current)
-                            clearTimeout(warningTimer.current);
-                        warningTimer.current = setTimeout(
-                            () => setWarningText(null),
-                            4000,
-                        );
-                    }
-                }
-            }
-
-            // Voice: only one candidate per tick, even if multiple objects were
-            // detected — prevents competing announceDetection() calls from
-            // rapid-firing/interrupting each other when the real model starts
-            // emitting simultaneous detections.
-            const audioCandidates = results.filter((r) => r.confidence >= 0.6);
-            const topDetection = selectPriorityDetection(audioCandidates);
-            if (topDetection) {
-                const signInstruction = topDetection.signKey
-                    ? (roadSigns as Record<string, { instruction: string }>)[
-                          topDetection.signKey
-                      ]?.instruction
-                    : undefined;
-                setTimeout(
-                    () => announceDetection(topDetection, signInstruction),
-                    50,
-                );
             }
         },
-        [trip, isActive],
+        [trip, isActive, positionRef],
     );
 
     useEffect(() => {
@@ -213,8 +276,10 @@ export default function CameraScreen() {
             if (detectionClearTimerRef.current)
                 clearTimeout(detectionClearTimerRef.current);
             setDetections([]);
-            setWarningText(null);
-            if (warningTimer.current) clearTimeout(warningTimer.current);
+            setActiveAlert(null);
+            trackRef.current = null;
+            if (alertTimer.current) clearTimeout(alertTimer.current);
+            alertGate.reset();
             stopAllSpeech();
         }
     }, [isActive]);
@@ -222,17 +287,51 @@ export default function CameraScreen() {
     const handleDetectionsRef = useRef(handleDetections);
     handleDetectionsRef.current = handleDetections;
 
+    const handleCameraDetections = useCallback(
+        (raw: RawDetection[], info: DetectionInfo) => {
+            const results = raw
+                .map((r) => classify(r.classIndex, r.confidence, { x: r.x, y: r.y, w: r.w, h: r.h }))
+                .filter((r): r is DetectionResult => r !== null);
+            handleDetectionsRef.current(results);
+
+            // Frames checked per second, refreshed once a second.
+            const stats = statsRef.current;
+            const now = Date.now();
+            if (!stats.since) stats.since = now;
+            stats.frames += 1;
+            const elapsed = now - stats.since;
+            if (elapsed >= 1000) {
+                setDetectorStats({
+                    fps: (stats.frames * 1000) / elapsed,
+                    ms: info.inferenceMs,
+                    delegate: info.delegate,
+                });
+                stats.frames = 0;
+                stats.since = now;
+            }
+        },
+        [],
+    );
+
+    // Start the speed reading fresh when detection stops or the camera changes.
+    useEffect(() => {
+        statsRef.current = { frames: 0, since: 0 };
+        setDetectorStats(null);
+    }, [detectionEnabled, sourceMode]);
+
     useFocusEffect(
         useCallback(() => {
-            detectionSource.onDetections((r) => handleDetectionsRef.current(r));
-            detectionSource.start();
             return () => {
-                if (detectionClearTimerRef.current)
+                if (detectionClearTimerRef.current) {
                     clearTimeout(detectionClearTimerRef.current);
-                detectionSource.stop();
+                    detectionClearTimerRef.current = null;
+                }
                 stopAllSpeech();
                 setDetections([]);
-                setWarningText(null);
+                setActiveAlert(null);
+                trackRef.current = null;
+                if (alertTimer.current) clearTimeout(alertTimer.current);
+                alertGate.reset();
             };
         }, []),
     );
@@ -278,12 +377,12 @@ export default function CameraScreen() {
         setUvcDisconnected(false);
     }, []);
 
-    const handleUvcCameraError = useCallback((cameraError: UvcCameraError) => {
+    const handleCameraError = useCallback((cameraError: UvcCameraError) => {
         // Expected while the rig isn't plugged in yet — not a real error to surface.
         if (cameraError.code === CameraErrorCodes.NO_DEVICE_FOUND) return;
         Toast.show({
             type: "error",
-            text1: "USB Camera Error",
+            text1: "Camera Error",
             text2: cameraError.message,
         });
     }, []);
@@ -328,24 +427,29 @@ export default function CameraScreen() {
         );
     }
 
-    const activeSignDetection = detections.find((d) => d.signKey);
-    const signInstruction = activeSignDetection?.signKey
-        ? (roadSigns as Record<string, { instruction: string }>)[
-              activeSignDetection.signKey
-          ]?.instruction
-        : null;
-
     return (
         <View style={styles.container}>
             {sourceMode === "native" ? (
-                <CameraView style={StyleSheet.absoluteFill} facing="back" />
+                // Mounted only while this tab is open, so the camera turns off on other tabs.
+                isFocused && (
+                    <PhoneDetectionCamera
+                        style={StyleSheet.absoluteFill}
+                        detectionEnabled={detectionEnabled}
+                        classNames={MODEL_CLASS_NAMES}
+                        onDetections={handleCameraDetections}
+                        onCameraError={handleCameraError}
+                    />
+                )
             ) : (
                 <>
                     <UvcCamera
                         ref={uvcCameraRef}
                         style={StyleSheet.absoluteFill}
+                        detectionEnabled={detectionEnabled}
+                        classNames={MODEL_CLASS_NAMES}
+                        onDetections={handleCameraDetections}
                         onCameraReady={handleUvcCameraReady}
-                        onCameraError={handleUvcCameraError}
+                        onCameraError={handleCameraError}
                         onDeviceDisconnected={handleUvcDeviceDisconnected}
                     />
                     {!uvcDevice && (
@@ -374,220 +478,70 @@ export default function CameraScreen() {
                 </>
             )}
 
-            <View style={StyleSheet.absoluteFill} pointerEvents="none">
-                {detections.map((d, i) => {
-                    const left = d.bbox.x * screenWidth;
-                    const top = d.bbox.y * screenHeight;
-                    const width = d.bbox.w * screenWidth;
-                    const height = d.bbox.h * screenHeight;
-                    const boxColor = getBoxColor(d);
+            {/* Boxes are drawn natively over the video, like YOLOv8 results.plot() (YoloAnnotator.kt). */}
 
-                    return (
-                        <View
-                            key={i}
-                            style={[
-                                styles.boundingBox,
-                                {
-                                    left,
-                                    top,
-                                    width,
-                                    height,
-                                    borderColor: boxColor,
-                                },
-                            ]}
-                        >
-                            <View
-                                style={[
-                                    styles.labelBadge,
-                                    { backgroundColor: boxColor },
-                                ]}
-                            >
-                                <Text
-                                    style={styles.labelText}
-                                    numberOfLines={1}
-                                >
-                                    {getBadgeLabel(d)}
-                                </Text>
-                            </View>
-                        </View>
-                    );
-                })}
-            </View>
-
-            {signInstruction && (
-                <View style={styles.signPanel} pointerEvents="none">
-                    <Ionicons
-                        name="information-circle"
-                        size={16}
-                        color="#fff"
-                    />
-                    <Text style={styles.signPanelText}>{signInstruction}</Text>
-                </View>
+            {isActive && arrowEnabled && (
+                <CompassArrow
+                    angle={angle}
+                    visibility={visibility}
+                    angleRef={angleRef}
+                    compassRef={compassRef}
+                />
             )}
 
-            {warningText && (
-                <View style={styles.warningBanner} pointerEvents="none">
-                    <Ionicons name="warning" size={16} color="#fff" />
-                    <Text style={styles.warningText} numberOfLines={2}>
-                        {warningText}
-                    </Text>
-                </View>
+            <SensorHud
+                phoneG={accelMag}
+                phoneGyro={gyroMag}
+                phoneState={rideState}
+            />
+
+            {activeAlert && (
+                <AlertCard
+                    key={activeAlert.id}
+                    alert={activeAlert.alert}
+                    top={insets.top + 56}
+                    trackedBbox={activeAlert.alert.kind === "road" ? undefined : trackedBbox}
+                />
             )}
 
-            <SafeAreaView
-                style={styles.topOverlay}
-                edges={["top"]}
-                pointerEvents="box-none"
-            >
-                <View style={styles.sourceToggle}>
-                    <TouchableOpacity
-                        style={[
-                            styles.toggleBtn,
-                            sourceMode === "native" && styles.toggleBtnActive,
-                        ]}
-                        onPress={() => setSourceMode("native")}
-                    >
-                        <Ionicons
-                            name="camera-outline"
-                            size={14}
-                            color={sourceMode === "native" ? "#fff" : "#9CA3AF"}
-                        />
-                        <Text
-                            style={[
-                                styles.toggleText,
-                                sourceMode === "native" &&
-                                    styles.toggleTextActive,
-                            ]}
-                        >
-                            Phone Cam
-                        </Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                        style={[
-                            styles.toggleBtn,
-                            sourceMode === "otg" && styles.toggleBtnActive,
-                        ]}
-                        onPress={() => setSourceMode("otg")}
-                    >
-                        <Ionicons
-                            name="hardware-chip-outline"
-                            size={14}
-                            color={sourceMode === "otg" ? "#fff" : "#9CA3AF"}
-                        />
-                        <Text
-                            style={[
-                                styles.toggleText,
-                                sourceMode === "otg" && styles.toggleTextActive,
-                            ]}
-                        >
-                            OTG Hardware
-                        </Text>
-                    </TouchableOpacity>
-                </View>
-
-                <TouchableOpacity
-                    style={styles.sosBtn}
-                    onPress={() => router.push("/(rider)/emergency-alert")}
-                >
-                    <Text style={styles.sosBtnText}>SOS</Text>
-                </TouchableOpacity>
-            </SafeAreaView>
-
-            <View style={styles.sensorHud}>
-                <TouchableOpacity
-                    style={[
-                        styles.stateBadge,
-                        { backgroundColor: RIDE_STATE_META[rideState].color },
-                    ]}
-                    onPress={() => setShowLegend(true)}
-                >
-                    <Text style={styles.stateBadgeText}>
-                        {RIDE_STATE_META[rideState].label}
-                    </Text>
-                    <Ionicons
-                        name="information-circle-outline"
-                        size={14}
-                        color="#fff"
-                    />
-                </TouchableOpacity>
-
-                <Text style={[styles.sensorLabel, { marginTop: 8 }]}>
-                    G-Force
-                </Text>
-                <Text
-                    style={[
-                        styles.sensorValue,
-                        {
-                            color:
-                                accelMag >= CRASH_G_THRESHOLD
-                                    ? "#EF4444"
-                                    : "#22C55E",
-                        },
-                    ]}
-                >
-                    {accelMag} g
-                </Text>
-                <Text style={[styles.sensorLabel, { marginTop: 6 }]}>Gyro</Text>
-                <Text
-                    style={[
-                        styles.sensorValue,
-                        {
-                            color:
-                                gyroMag >= CRASH_ANGULAR_THRESHOLD
-                                    ? "#EF4444"
-                                    : "#22C55E",
-                        },
-                    ]}
-                >
-                    {gyroMag} rad/s
-                </Text>
-            </View>
-
-            <Modal
-                visible={showLegend}
-                animationType="fade"
-                transparent
-                onRequestClose={() => setShowLegend(false)}
-            >
-                <TouchableOpacity
-                    style={styles.legendBackdrop}
-                    activeOpacity={1}
-                    onPress={() => setShowLegend(false)}
-                >
-                    <View style={styles.legendCard}>
-                        <Text style={styles.legendTitle}>Riding States</Text>
-                        {(
-                            Object.keys(RIDE_STATE_META) as RideState[]
-                        ).map((key) => (
-                            <View key={key} style={styles.legendRow}>
-                                <View
-                                    style={[
-                                        styles.legendDot,
-                                        { backgroundColor: RIDE_STATE_META[key].color },
-                                    ]}
-                                />
-                                <View style={{ flex: 1 }}>
-                                    <Text style={styles.legendLabel}>
-                                        {RIDE_STATE_META[key].label}
-                                    </Text>
-                                    <Text style={styles.legendRange}>
-                                        {RIDE_STATE_META[key].range}
+            {(objectCounts.length > 0 || detectorStats) && (
+                <View style={styles.detectorPanel} pointerEvents="none">
+                    {objectCounts.length > 0 && (
+                        <View style={styles.objectCountRow}>
+                            {objectCounts.map((o) => (
+                                <View key={o.label} style={styles.objectCountPill}>
+                                    <View style={[styles.objectCountDot, { backgroundColor: o.color }]} />
+                                    <Text style={styles.objectCountText} numberOfLines={1}>
+                                        {`${o.label} ${o.count}`}
                                     </Text>
                                 </View>
-                            </View>
-                        ))}
-                    </View>
-                </TouchableOpacity>
-            </Modal>
-
-            <View style={styles.demoBadge} pointerEvents="none">
-                <Text style={styles.demoBadgeText}>DEMO MODE</Text>
-            </View>
+                            ))}
+                        </View>
+                    )}
+                    {detectorStats && (
+                        <View style={styles.detectorChip}>
+                            <Text style={styles.detectorChipText}>
+                                {`${detectorStats.fps.toFixed(1)} FPS · ${Math.round(detectorStats.ms)} ms · ${detectorStats.delegate}`}
+                            </Text>
+                        </View>
+                    )}
+                </View>
+            )}
 
             {isActive && (
                 <View style={styles.sessionBar} pointerEvents="box-none">
                     <View style={styles.sessionDot} />
                     <Text style={styles.sessionText}>Ride Live</Text>
+                    <TouchableOpacity
+                        style={[
+                            styles.arrowToggleBtn,
+                            arrowEnabled && styles.arrowToggleBtnActive,
+                        ]}
+                        onPress={() => setArrowEnabled((v) => !v)}
+                        accessibilityLabel="Toggle direction arrow"
+                    >
+                        <Ionicons name="navigate" size={16} color="#fff" />
+                    </TouchableOpacity>
                     <TouchableOpacity
                         style={styles.endRideBtn}
                         onPress={handleEndRide}
@@ -631,33 +585,39 @@ export default function CameraScreen() {
                     </View>
                 </View>
             )}
+
+            {/* Last, so it stays tappable above the "Ready to ride?" overlay */}
+            <SafeAreaView
+                style={styles.topOverlay}
+                edges={["top"]}
+                pointerEvents="box-none"
+            >
+                <View style={styles.sourceToggle}>
+                    {SOURCE_OPTIONS.map((option) => {
+                        const selected = sourceMode === option.mode;
+                        return (
+                            <TouchableOpacity
+                                key={option.mode}
+                                style={[styles.toggleBtn, selected && styles.toggleBtnActive]}
+                                onPress={() => setSourceMode(option.mode)}
+                                accessibilityRole="button"
+                                accessibilityState={{ selected }}
+                                accessibilityLabel={`Use ${option.label}`}
+                            >
+                                <Ionicons
+                                    name={option.icon}
+                                    size={14}
+                                    color={selected ? "#fff" : "#9CA3AF"}
+                                />
+                                <Text style={[styles.toggleText, selected && styles.toggleTextActive]}>
+                                    {option.label}
+                                </Text>
+                            </TouchableOpacity>
+                        );
+                    })}
+                </View>
+            </SafeAreaView>
         </View>
     );
 }
 
-function getBoxColor(d: DetectionResult): string {
-    if (d.distance !== undefined) {
-        if (d.distance < 5) return "#EF4444";
-        if (d.distance < 15) return "#F59E0B";
-    }
-    return HAZARD_COLORS[d.type] ?? "#0274DF";
-}
-
-const SHORT_TYPE: Record<string, string> = {
-    "Traffic Light Red": "TL Red",
-    "Traffic Light Green": "TL Green",
-    "Traffic Light Orange": "TL Orange",
-    "Road Excavation": "Road Exc.",
-    "Road Barrier": "Barrier",
-    "Traffic Sign": "Sign",
-};
-
-function getBadgeLabel(d: DetectionResult): string {
-    const label = SHORT_TYPE[d.type] ?? d.type;
-    if (d.distance !== undefined) return `${label} ${d.distance}m`;
-    if (d.signKey) {
-        const sign = (roadSigns as Record<string, { name: string }>)[d.signKey];
-        return sign?.name ?? "Sign";
-    }
-    return label;
-}

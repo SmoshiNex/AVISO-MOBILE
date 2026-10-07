@@ -1,4 +1,4 @@
-import type { HazardType } from '@/constants/hazards';
+import type { HazardType, SignKey } from '@/constants/hazards';
 
 export type User = {
   id: number;
@@ -71,9 +71,8 @@ export type DetectionResult = {
   type: HazardType | string;
   confidence: number;
   bbox: { x: number; y: number; w: number; h: number }; // 0–1 normalized
-  distance?: number;           // meters — only for hazard classes 0–2
-  trafficState?: 'red' | 'orange' | 'green' | 'unknown'; // class 3 only
-  signKey?: string;            // class 4 only — key into road_sign_instructions.json
+  distance?: number;           // meters — road hazards only
+  signKey?: SignKey;           // traffic signs only — key into road_sign_instructions.json
 };
 
 // Local SQLite trip record
@@ -121,6 +120,8 @@ export type LocalCrashEvent = {
   synced: boolean;
   /** Backend delivery attempts so far. Caps the retry queue in sync-service. */
   attempts: number;
+  /** Crash id from the IoT unit, when the SOS started from a unit crash. */
+  event_uid?: string;
 };
 
 // Local SQLite emergency contact (with local-only is_active toggle)
@@ -130,4 +131,111 @@ export type LocalEmergencyContact = {
   relationship?: string;
   contact_number: string;
   is_active: boolean;
+};
+
+// ─── AVISO IoT unit (ESP32 + BNO055) ─────────────────────────────────────────
+
+export type IotMotionState = 'normal' | 'bump' | 'hard_braking' | 'impact' | 'fallen' | 'crash';
+
+/** Live readings from the unit, ~10 per second. */
+export type IotTelemetry = {
+  /** Linear acceleration in g (gravity removed: 0 at rest). */
+  g: number;
+  /** Up/down part (bumps). */
+  vg: number;
+  /** Forward/back/sideways part (braking). */
+  hg: number;
+  /** Rotation speed, degrees/second. */
+  gy: number;
+  /** Rotation around vertical (turning), degrees/second. */
+  yaw: number;
+  /** Lean from the saved upright, degrees. */
+  tilt: number;
+  st: IotMotionState;
+};
+
+export type IotHello = {
+  uid: string;
+  fw: string;
+  reset: string;
+  uptime: number;
+  rssi: number;
+  paired: boolean;
+  upright_saved: boolean;
+  offsets_saved: boolean;
+  cal: { sys: number; gyro: number; accel: number };
+};
+
+export type IotEventType = 'normal' | 'road_bump' | 'hard_braking' | 'crash';
+
+export type IotEvent = {
+  id: string;
+  type: IotEventType;
+  peak_g: number;
+  /** Peak up/down part, g. */
+  vg: number;
+  /** Peak forward/back/sideways part, g. */
+  hg: number;
+  peak_gyro: number;
+  tilt: number;
+  /** Phone time it arrived (ms). */
+  receivedAt: number;
+};
+
+/** The rider's paired unit as known by the server. */
+export type IotDeviceInfo = {
+  device_uid: string;
+  local_ip: string | null;
+  rssi: number | null;
+  firmware_version: string | null;
+  uptime_seconds: number | null;
+  reset_reason: string | null;
+  last_seen_at: string | null;
+  online: boolean;
+};
+
+// ─── Crash-detection log (server: rider_events) ─────────────────────────────
+
+/** One logged classification, as returned by GET /rider/events. */
+export type RiderEventLog = {
+  id: number;
+  event_uid: string | null;
+  event_type: IotEventType;
+  area: string | null;
+  acceleration_peak: string;
+  vertical_g: string | null;
+  horizontal_g: string | null;
+  gyro_peak_dps: string | null;
+  tilt_deg: string | null;
+  detected_at: string;
+};
+
+export type MinAvgMax = { min: number | null; avg: number | null; max: number | null };
+
+/** Per-category ranges (GET /rider/events/stats). */
+export type RiderEventTypeStats = {
+  type: IotEventType;
+  label: string;
+  total: number;
+  g: MinAvgMax;
+  vertical_g: MinAvgMax;
+  horizontal_g: MinAvgMax;
+  gyro_dps: MinAvgMax;
+  tilt_deg: MinAvgMax;
+};
+
+/** Event waiting in the phone's SQLite queue for upload. */
+export type LocalRideEvent = {
+  id: number;
+  event_uid: string;
+  event_type: IotEventType;
+  latitude: number;
+  longitude: number;
+  acceleration_peak: number;
+  vertical_g: number | null;
+  horizontal_g: number | null;
+  gyro_peak_dps: number | null;
+  tilt_deg: number | null;
+  detected_at: string;
+  attempts: number;
 };

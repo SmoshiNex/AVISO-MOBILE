@@ -87,9 +87,9 @@ export default function HazardLogsScreen() {
           <Text style={[styles.rowMeta, { color: textSecondary }]}>
             {formatDate(item.detected_at)} · {formatTime(item.detected_at)}
           </Text>
-          {item.area && (
+          {(item.area || !item.synced) && (
             <Text style={[styles.rowArea, { color: textSecondary }]} numberOfLines={1}>
-              {item.area}
+              {item.area ?? 'Pending sync'}
             </Text>
           )}
         </View>
@@ -188,11 +188,11 @@ export default function HazardLogsScreen() {
                     labelColor={textSecondary}
                   />
                 )}
-                {selected.area && (
+                {(selected.area || !selected.synced) && (
                   <DetailRow
                     icon="map-outline"
-                    label="Area"
-                    value={selected.area}
+                    label="Barangay"
+                    value={selected.area ?? 'Pending sync'}
                     textColor={text}
                     labelColor={textSecondary}
                   />

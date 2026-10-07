@@ -6,6 +6,7 @@ import {
   endTrip,
   saveHazardLog,
   getUnsyncedHazardLogs,
+  deleteNonRoadHazardLogs,
   markHazardLogSynced,
   reconcileHazardLogSynced,
   clearSyncedHazardLogs,
@@ -14,8 +15,12 @@ import {
   incrementCrashEventAttempts,
   abandonCrashEvent,
   upsertContact,
+  getUnsyncedRideEvents,
+  markRideEventSynced,
+  setRideEventAttempts,
+  pruneSyncedRideEvents,
 } from './local-db';
-import { resolveArea } from './area-resolver';
+import type { LocalRideEvent } from '@/types';
 
 let syncInProgress = false;
 let lastPullMs = 0;
@@ -26,6 +31,11 @@ const MAX_SOS_SYNC_ATTEMPTS = 10;
 
 /** Past this age a crash event is history, not an emergency to dispatch. */
 const SOS_SYNC_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
+/** Transient-failure budget for a crash-detection log row before it is dropped. */
+export const MAX_RIDE_EVENT_ATTEMPTS = 20;
+/** Upload at most this many queued log rows per sync run. */
+const RIDE_EVENT_BATCH = 100;
 
 /**
  * Normalizes a backend list response into an array. The rider API is not
@@ -54,7 +64,7 @@ export async function syncPendingData(): Promise<{ synced: number }> {
   syncInProgress = true;
   let synced = 0;
   try {
-    const [hazardCount] = await Promise.all([syncHazardLogs(), syncCrashEvents()]);
+    const [hazardCount] = await Promise.all([syncHazardLogs(), syncCrashEvents(), syncRideEvents()]);
     synced = hazardCount;
   } finally {
     syncInProgress = false;
@@ -62,7 +72,56 @@ export async function syncPendingData(): Promise<{ synced: number }> {
   return { synced };
 }
 
+/**
+ * Uploads one queued crash-detection log row.
+ * 'ok'    = the server has it (stored now or before: it dedupes on event_uid)
+ * 'retry' = no connection / server busy, try again later
+ * 'drop'  = rejected for good, retrying cannot help
+ */
+export async function uploadRideEvent(
+  event: Omit<LocalRideEvent, 'id' | 'attempts'>,
+): Promise<'ok' | 'retry' | 'drop'> {
+  try {
+    await api.post('/rider/events', {
+      event_uid: event.event_uid,
+      event_type: event.event_type,
+      latitude: event.latitude,
+      longitude: event.longitude,
+      acceleration_peak: event.acceleration_peak,
+      vertical_g: event.vertical_g,
+      horizontal_g: event.horizontal_g,
+      gyro_peak_dps: event.gyro_peak_dps,
+      tilt_deg: event.tilt_deg,
+      detected_at: event.detected_at,
+    });
+    await markRideEventSynced(event.event_uid);
+    return 'ok';
+  } catch (err) {
+    const status = (err as { status?: number }).status;
+    // A rejected row (validation) will never succeed: stop retrying it.
+    // 429 (rate limit) is transient and is retried later.
+    if (status !== undefined && status >= 400 && status < 500 && status !== 429) {
+      await setRideEventAttempts(event.event_uid, MAX_RIDE_EVENT_ATTEMPTS);
+      return 'drop';
+    }
+    return 'retry';
+  }
+}
+
+/** Uploads crash-detection log rows recorded while the phone was offline. */
+async function syncRideEvents(): Promise<void> {
+  const events = await getUnsyncedRideEvents(RIDE_EVENT_BATCH, MAX_RIDE_EVENT_ATTEMPTS);
+  for (const event of events) {
+    const result = await uploadRideEvent(event);
+    if (result === 'retry') {
+      await setRideEventAttempts(event.event_uid, event.attempts + 1);
+    }
+  }
+  await pruneSyncedRideEvents();
+}
+
 async function syncHazardLogs(): Promise<number> {
+  await deleteNonRoadHazardLogs();
   const logs = await getUnsyncedHazardLogs();
   if (logs.length === 0) return 0;
 
@@ -71,21 +130,20 @@ async function syncHazardLogs(): Promise<number> {
 
   for (const log of logs) {
     try {
-      const area = log.area ?? resolveArea(log.latitude, log.longitude);
       const response = await api.post('/rider/hazard-logs', {
         type: log.type,
         latitude: log.latitude,
         longitude: log.longitude,
         confidence: log.confidence,
         distance: log.distance ?? null,
-        area,
         rider_code: riderCode,
         detected_at: log.detected_at,
       });
 
       const remoteId = (response as any)?.data?.id;
       if (remoteId) {
-        await markHazardLogSynced(log.id, remoteId);
+        // Store the barangay the server resolved from the GPS point.
+        await markHazardLogSynced(log.id, remoteId, (response as any)?.data?.area);
         count++;
       }
     } catch {
@@ -125,6 +183,7 @@ async function syncCrashEvents(): Promise<void> {
         // The incident's identity — lets the backend recognise a replay of an
         // alert it has already recorded instead of creating a duplicate.
         triggered_at: event.triggered_at,
+        ...(event.event_uid && { event_uid: event.event_uid }),
       });
       await markCrashEventSynced(event.id);
     } catch (err) {

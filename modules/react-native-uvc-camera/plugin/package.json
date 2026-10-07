@@ -1,0 +1,4 @@
+{
+    "name": "@kartik512/react-native-uvc-camera-plugin",
+    "main": "./withUvcCamera.js"
+}
