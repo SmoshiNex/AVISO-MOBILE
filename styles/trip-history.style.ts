@@ -12,6 +12,8 @@ export const styles = StyleSheet.create({
     paddingVertical: Spacing.md,
     borderBottomWidth: 1,
   },
+  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+  iconBtn: { padding: Spacing.xs },
   headerTitle: { fontSize: 20, fontFamily: Fonts.bold },
   headerCount: { fontSize: 13, fontFamily: Fonts.regular },
   listContent: { padding: Spacing.md, paddingBottom: 40 },
@@ -38,7 +40,8 @@ export const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  tripInfo: { flex: 1 },
+  tripInfo: { flex: 1, gap: 2 },
+  tripPlaces: { fontSize: 14, fontFamily: Fonts.bold },
   tripDate: { fontSize: 15, fontFamily: Fonts.semibold },
   tripTime: { fontSize: 13, fontFamily: Fonts.regular, marginTop: 2 },
   tripStats: {

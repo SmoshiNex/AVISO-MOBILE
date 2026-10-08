@@ -87,6 +87,8 @@ export type LocalTrip = {
   end_lat?: number;
   end_lng?: number;
   route_points: Array<{ lat: number; lng: number }>;
+  /** When the last GPS point was saved (ends a crash-interrupted ride at that time). */
+  last_point_at?: string;
   status: 'active' | 'ended';
   started_at: string;
   ended_at?: string;

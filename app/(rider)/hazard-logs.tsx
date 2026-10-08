@@ -9,15 +9,21 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import Toast from 'react-native-toast-message';
 import * as Network from 'expo-network';
 import { useThemeColor } from '@/hooks/use-theme-color';
-import { getHazardLogs } from '@/lib/local-db';
+import { getHazardLogs, getTripsByIds } from '@/lib/local-db';
+import { placeLabel } from '@/lib/barangay-lookup';
+import { rideLabel, tripRoute } from '@/lib/route-utils';
 import { pullFromBackend } from '@/lib/sync-service';
 import { HAZARD_COLORS } from '@/constants/hazards';
 import type { LocalHazardLog } from '@/types';
 import { styles } from '@/styles/hazard-logs.style';
+
+/** What a detection shows about the ride it was seen on. */
+type TripInfo = { label: string; places: string };
 
 export default function HazardLogsScreen() {
   const background = useThemeColor({}, 'background');
@@ -32,10 +38,27 @@ export default function HazardLogsScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [selected, setSelected] = useState<LocalHazardLog | null>(null);
+  const [tripInfo, setTripInfo] = useState<Record<number, TripInfo>>({});
 
   const loadLogs = useCallback(async () => {
     const data = await getHazardLogs();
+    const tripIds = [...new Set(data.map((l) => l.trip_id).filter((id): id is number => !!id))];
+    const trips = await getTripsByIds(tripIds);
+    const info: Record<number, TripInfo> = {};
+    for (const t of trips) {
+      const route = tripRoute(t);
+      const from = placeLabel(route[0]?.lat, route[0]?.lng);
+      const last = route.length > 1 ? route[route.length - 1] : undefined;
+      const to = last ? placeLabel(last.lat, last.lng) : from;
+      info[t.id] = { label: rideLabel(t), places: from === to ? from : `${from} → ${to}` };
+    }
+    setTripInfo(info);
     setLogs(data);
+  }, []);
+
+  const openTrip = useCallback((tripId: number) => {
+    setSelected(null);
+    router.push({ pathname: '/(rider)/trip/[id]', params: { id: String(tripId) } });
   }, []);
 
   useEffect(() => {
@@ -92,6 +115,15 @@ export default function HazardLogsScreen() {
               {item.area ?? 'Pending sync'}
             </Text>
           )}
+          <View style={styles.rowTrip}>
+            <Ionicons name="bicycle-outline" size={12} color={item.trip_id && tripInfo[item.trip_id] ? primary : textSecondary} />
+            <Text
+              style={[styles.rowTripText, { color: item.trip_id && tripInfo[item.trip_id] ? primary : textSecondary }]}
+              numberOfLines={1}
+            >
+              {item.trip_id && tripInfo[item.trip_id] ? tripInfo[item.trip_id].label : 'No trip'}
+            </Text>
+          </View>
         </View>
         <View style={styles.rowRight}>
           <Text style={[styles.confidence, { color }]}>
@@ -211,6 +243,28 @@ export default function HazardLogsScreen() {
                   textColor={selected.synced ? '#22C55E' : textSecondary}
                   labelColor={textSecondary}
                 />
+                <DetailRow
+                  icon="bicycle-outline"
+                  label="Trip"
+                  value={
+                    selected.trip_id && tripInfo[selected.trip_id]
+                      ? `${tripInfo[selected.trip_id].label}
+${tripInfo[selected.trip_id].places}`
+                      : 'Not linked to a trip'
+                  }
+                  textColor={text}
+                  labelColor={textSecondary}
+                />
+                {selected.trip_id && tripInfo[selected.trip_id] && (
+                  <TouchableOpacity
+                    style={[styles.tripButton, { backgroundColor: primary }]}
+                    onPress={() => openTrip(selected.trip_id!)}
+                    accessibilityLabel="View trip on map"
+                  >
+                    <Ionicons name="map-outline" size={18} color="#fff" />
+                    <Text style={styles.tripButtonText}>View trip on map</Text>
+                  </TouchableOpacity>
+                )}
               </View>
             )}
           </View>

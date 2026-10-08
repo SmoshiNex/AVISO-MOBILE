@@ -118,7 +118,7 @@ function AnchoredAlertCard({ alert, minTop, bbox, lost }: AnchoredProps) {
     <Animated.View
       pointerEvents="none"
       style={StyleSheet.absoluteFill}
-      entering={FadeInUp.springify().damping(14)}
+      entering={FadeInUp.duration(ENTER_MS)}
       exiting={FadeOut.duration(300)}
     >
       <Animated.View style={[styles.anchored, cardStyle]}>
@@ -130,7 +130,13 @@ function AnchoredAlertCard({ alert, minTop, bbox, lost }: AnchoredProps) {
             />
           </Svg>
         )}
-        <View style={[styles.cardBody, { borderColor: accent, shadowColor: accent }]}>
+        <View
+          style={[
+            styles.cardBody,
+            { borderColor: accent, shadowColor: accent },
+            alert.tier === 'possible' && styles.possible,
+          ]}
+        >
           <Animated.View style={iconStyle}>
             <SignIcon detection={alert.detection} size={52} />
           </Animated.View>
@@ -172,7 +178,7 @@ function FixedAlertCard({ alert, top }: { alert: Alert; top: number }) {
     <Animated.View
       pointerEvents="none"
       style={StyleSheet.absoluteFill}
-      entering={FadeInUp.springify().damping(14)}
+      entering={FadeInUp.duration(ENTER_MS)}
       exiting={FadeOut.duration(300)}
     >
       {showLeader && (
@@ -194,6 +200,7 @@ function FixedAlertCard({ alert, top }: { alert: Alert; top: number }) {
         style={[
           styles.card,
           { top, left: cardLeft, borderColor: accent, shadowColor: accent },
+          alert.tier === 'possible' && styles.possible,
         ]}
       >
         <Animated.View style={iconStyle}>
@@ -214,7 +221,15 @@ function FixedAlertCard({ alert, top }: { alert: Alert; top: number }) {
   );
 }
 
+/** Quick fade-in: the warning should appear as soon as it's decided. */
+const ENTER_MS = 160;
+
 const styles = StyleSheet.create({
+  // "Possible ..." warnings (weak but steady detections): dashed and dimmer, no voice.
+  possible: {
+    borderStyle: 'dashed',
+    opacity: 0.85,
+  },
   card: {
     position: 'absolute',
     width: CARD_WIDTH,

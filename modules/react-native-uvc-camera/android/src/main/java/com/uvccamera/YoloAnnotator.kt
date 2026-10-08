@@ -43,6 +43,7 @@ class YoloAnnotator {
 
         // Results.plot() draws in reverse order, so the most confident box ends up on top.
         for (d in detections.asReversed()) {
+            if (d.confidence < YoloDetector.DRAW_THRESHOLD) continue
             val color = colorFor(d.classIndex)
             val txtColor = textColorFor(d.classIndex)
             var x1 = (d.x * frameW).toInt()

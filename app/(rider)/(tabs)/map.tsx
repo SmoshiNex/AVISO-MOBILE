@@ -4,22 +4,20 @@ import {
   Text,
   TouchableOpacity,
   ScrollView,
-  ActivityIndicator,
 } from 'react-native';
 
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Map, MapMarker, MapRoute, MapUserLocation, MapControls, MapHeatmap, useMap } from '@/components/ui/map';
-import { useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import Mapbox from '@rnmapbox/maps';
 import Toast from 'react-native-toast-message';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { useTripContext } from '@/contexts/trip-context';
 import { BarangayBoundaries } from '@/components/BarangayBoundaries';
-import { getTripById, getHazardLogsForTrip, getHazardLogs } from '@/lib/local-db';
+import { getHazardLogs } from '@/lib/local-db';
 import { api } from '@/lib/api-client';
 import { HAZARD_COLORS } from '@/constants/hazards';
-import type { LocalTrip, LocalHazardLog, HazardLog } from '@/types';
+import type { LocalHazardLog, HazardLog } from '@/types';
 import { styles } from '@/styles/map.style';
 
 const HAZARD_STAT_GROUPS = [
@@ -51,11 +49,8 @@ function MarkerDot({ color }: { color: string }) {
 }
 
 export default function MapScreen() {
-  const { trip_id } = useLocalSearchParams<{ trip_id?: string }>();
-  const isHistoryMode = !!trip_id;
   const insets = useSafeAreaInsets();
 
-  const background = useThemeColor({}, 'background');
   const card = useThemeColor({}, 'card');
   const text = useThemeColor({}, 'text');
   const textSecondary = useThemeColor({}, 'textSecondary');
@@ -65,10 +60,6 @@ export default function MapScreen() {
   const border = useThemeColor({}, 'border');
 
   const { trip: activeTrip, isActive, startTrip, endTrip } = useTripContext();
-
-  const [historyTrip, setHistoryTrip] = useState<LocalTrip | null>(null);
-  const [historyHazards, setHistoryHazards] = useState<LocalHazardLog[]>([]);
-  const [loading, setLoading] = useState(false);
 
   const [liveHazards, setLiveHazards] = useState<LocalHazardLog[]>([]);
   const [backendHazards, setBackendHazards] = useState<HazardLog[]>([]);
@@ -108,18 +99,6 @@ export default function MapScreen() {
     };
   }, [liveHazards, backendHazards, primary]);
 
-  const historyMarkerFeatures = useMemo(() => {
-    return {
-      type: 'FeatureCollection' as const,
-      features: historyHazards.map(h => ({
-        type: 'Feature' as const,
-        id: `history-${h.id}`,
-        geometry: { type: 'Point' as const, coordinates: [h.longitude, h.latitude] },
-        properties: { id: `history-${h.id}`, color: HAZARD_COLORS[h.type] ?? primary }
-      }))
-    };
-  }, [historyHazards, primary]);
-
   const [visibleBounds, setVisibleBounds] = useState<{
     minLat: number; maxLat: number; minLng: number; maxLng: number;
   } | null>(null);
@@ -128,15 +107,13 @@ export default function MapScreen() {
   const isFeaturePressRef = useRef(false);
 
   useEffect(() => {
-    if (isHistoryMode) return;
     const load = () => getHazardLogs().then(setLiveHazards);
     load();
     const interval = setInterval(load, 5000);
     return () => clearInterval(interval);
-  }, [isHistoryMode]);
+  }, []);
 
   useEffect(() => {
-    if (isHistoryMode) return;
     const fetchBackendHazards = async () => {
       try {
         const data = await api.get<HazardLog[]>('/rider/hazards');
@@ -146,19 +123,7 @@ export default function MapScreen() {
     fetchBackendHazards();
     const interval = setInterval(fetchBackendHazards, 15000);
     return () => clearInterval(interval);
-  }, [isHistoryMode]);
-
-  useEffect(() => {
-    if (!isHistoryMode) return;
-    setLoading(true);
-    const id = parseInt(trip_id, 10);
-    Promise.all([getTripById(id), getHazardLogsForTrip(id)])
-      .then(([t, hazards]) => {
-        setHistoryTrip(t);
-        setHistoryHazards(hazards);
-      })
-      .finally(() => setLoading(false));
-  }, [trip_id, isHistoryMode]);
+  }, []);
 
   const handleStartRide = useCallback(async () => {
     Toast.show({ type: 'info', text1: 'Starting ride...' });
@@ -179,121 +144,6 @@ export default function MapScreen() {
       Toast.show({ type: 'error', text1: 'Could not end ride.' });
     }
   }, [endTrip]);
-
-  const formatDuration = (trip: LocalTrip): string => {
-    if (!trip.started_at || !trip.ended_at) return '';
-    const mins = Math.round(
-      (new Date(trip.ended_at).getTime() - new Date(trip.started_at).getTime()) / 60000,
-    );
-    return mins < 60 ? `${mins} min` : `${Math.floor(mins / 60)}h ${mins % 60}m`;
-  };
-
-  // ── HISTORY MODE ────────────────────────────────────────────────────────────
-  if (isHistoryMode) {
-    if (loading) {
-      return (
-        <View style={[styles.center, { backgroundColor: background }]}>
-          <ActivityIndicator color={primary} />
-        </View>
-      );
-    }
-
-    if (!historyTrip) {
-      return (
-        <View style={[styles.center, { backgroundColor: background }]}>
-          <Text style={[styles.emptyText, { color: textSecondary }]}>Trip not found</Text>
-        </View>
-      );
-    }
-
-    // GeoJSON order: [lng, lat]
-    const routeCoords: [number, number][] = historyTrip.route_points.map((p) => [p.lng, p.lat]);
-
-    const center: [number, number] = historyTrip.start_lat && historyTrip.start_lng
-      ? [historyTrip.start_lng, historyTrip.start_lat]
-      : ZAMBOANGA_CENTER;
-    const zoom = historyTrip.start_lat && historyTrip.start_lng ? 14 : ZAMBOANGA_ZOOM;
-
-    return (
-      <View style={styles.container}>
-        <Map center={center} zoom={zoom}>
-          {routeCoords.length > 1 && (
-            <MapRoute coordinates={routeCoords} color={primary} width={4} />
-          )}
-          {historyTrip.start_lat && historyTrip.start_lng && (
-            <MapMarker
-              longitude={historyTrip.start_lng}
-              latitude={historyTrip.start_lat}
-              label="Start"
-            >
-              <MarkerDot color="#22C55E" />
-            </MapMarker>
-          )}
-          {historyTrip.end_lat && historyTrip.end_lng && (
-            <MapMarker
-              longitude={historyTrip.end_lng}
-              latitude={historyTrip.end_lat}
-              label="End"
-            >
-              <MarkerDot color="#EF4444" />
-            </MapMarker>
-          )}
-
-          <BarangayBoundaries visible={showBarangays} />
-
-          <Mapbox.ShapeSource 
-            id="history-hazards-source" 
-            shape={historyMarkerFeatures} 
-            onPress={(e) => {
-              isFeaturePressRef.current = true;
-              const feature = e.features[0];
-              const id = feature?.properties?.id;
-              if (!id) return;
-              const data = historyHazards.find(h => `history-${h.id}` === id);
-              if (data) setSelectedHazard({ source: 'local', data });
-              setTimeout(() => { isFeaturePressRef.current = false; }, 100);
-            }}
-          >
-            <Mapbox.CircleLayer
-              id="history-hazards-layer"
-              minZoomLevel={12.5}
-              style={{
-                circleRadius: 6,
-                circleColor: ['get', 'color'],
-                circleStrokeWidth: 2,
-                circleStrokeColor: 'white',
-                circlePitchAlignment: 'map',
-              }}
-            />
-          </Mapbox.ShapeSource>
-        </Map>
-
-        <SafeAreaView edges={['top']} pointerEvents="box-none" style={styles.historyCardWrapper}>
-          <View style={[styles.historyCard, { backgroundColor: card, borderColor: border }]}>
-            <Text style={[styles.historyTitle, { color: text }]} numberOfLines={1}>
-              {new Date(historyTrip.started_at).toLocaleDateString('en-PH', {
-                month: 'short', day: 'numeric', year: 'numeric',
-              })}
-            </Text>
-            <View style={styles.historyMeta}>
-              <View style={styles.metaItem}>
-                <Ionicons name="time-outline" size={14} color={textSecondary} />
-                <Text style={[styles.metaText, { color: textSecondary }]}>
-                  {historyTrip.ended_at ? formatDuration(historyTrip) : 'In progress'}
-                </Text>
-              </View>
-              <View style={styles.metaItem}>
-                <Ionicons name="warning-outline" size={14} color={textSecondary} />
-                <Text style={[styles.metaText, { color: textSecondary }]}>
-                  {historyTrip.total_hazards} detected
-                </Text>
-              </View>
-            </View>
-          </View>
-        </SafeAreaView>
-      </View>
-    );
-  }
 
   // ── LIVE MODE ───────────────────────────────────────────────────────────────
   const liveCenter: [number, number] = activeTrip?.current_lat && activeTrip?.current_lng

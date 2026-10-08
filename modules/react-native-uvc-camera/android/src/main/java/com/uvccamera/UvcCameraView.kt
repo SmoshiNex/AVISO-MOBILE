@@ -66,6 +66,13 @@ class UvcCameraView @JvmOverloads constructor(
     @Volatile
     private var detectionEnabled = false
 
+    // Frames that reached the detector (for diagnostics)
+    private var detectedFrames = 0L
+
+    // Every mode the webcam offers; used to recover the real size from a frame's byte count.
+    @Volatile
+    private var supportedSizes: List<Size> = emptyList()
+
     // Size of the frames delivered by the frame callback (= preview size)
     @Volatile
     private var frameWidth = DEFAULT_WIDTH
@@ -82,6 +89,8 @@ class UvcCameraView @JvmOverloads constructor(
     companion object {
         private const val TAG = "UvcCameraView"
         private const val DEBUG = true
+        private const val PREFERRED_WIDTH = 1280
+        private const val PREFERRED_HEIGHT = 720
     }
 
     init {
@@ -171,14 +180,21 @@ class UvcCameraView @JvmOverloads constructor(
         if (!detectionEnabled || !isViewAttached) return
         if (!detectorBusy.compareAndSet(false, true)) return
 
+        val size = frame.remaining()
+        if (size != frameWidth * frameHeight * 3) {
+            // The library can report a stale preview size; trust the frame's byte count instead.
+            val match = supportedSizes.firstOrNull { it.width * it.height * 3 == size }
+            if (match == null) {
+                if (DEBUG) Log.w(TAG, "Unexpected frame size $size for ${frameWidth}x$frameHeight")
+                detectorBusy.set(false)
+                return
+            }
+            Log.i(TAG, "Frame size corrected to ${match.width}x${match.height}")
+            frameWidth = match.width
+            frameHeight = match.height
+        }
         val frameW = frameWidth
         val frameH = frameHeight
-        val size = frame.remaining()
-        if (size != frameW * frameH * 3) {
-            if (DEBUG) Log.w(TAG, "Unexpected frame size $size for ${frameW}x$frameH")
-            detectorBusy.set(false)
-            return
-        }
 
         val executor = detectorExecutor ?: Executors.newSingleThreadExecutor().also { detectorExecutor = it }
         if (frameBytes.size != size) frameBytes = ByteArray(size)
@@ -189,6 +205,8 @@ class UvcCameraView @JvmOverloads constructor(
             executor.execute {
                 try {
                     runDetection(pixels, frameW, frameH)
+                } catch (e: Throwable) {
+                    Log.e(TAG, "Detection failed on ${frameW}x$frameH frame", e)
                 } finally {
                     detectorBusy.set(false)
                 }
@@ -199,6 +217,8 @@ class UvcCameraView @JvmOverloads constructor(
     }
 
     private fun runDetection(pixels: ByteArray, frameW: Int, frameH: Int) {
+        val n = ++detectedFrames
+        if (n == 1L) Log.i(TAG, "First frame ${frameW}x$frameH on thread ${Thread.currentThread().name}")
         val detector = try {
             YoloDetector.get(context)
         } catch (e: Throwable) {
@@ -210,6 +230,10 @@ class UvcCameraView @JvmOverloads constructor(
 
         val start = SystemClock.elapsedRealtime()
         val detections = detector.detect(pixels, frameW, frameH, 3)
+        val timings = detector.lastTimings
+        if (n == 1L || n % 50 == 0L) {
+            Log.i(TAG, "Frame $n: ${detections.size} boxes, prep ${timings.prepMs.toInt()} model ${timings.modelMs.toInt()} ms")
+        }
         val inferenceMs = (SystemClock.elapsedRealtime() - start).toDouble()
 
         val drawn = annotator.draw(detections, frameW, frameH)
@@ -229,7 +253,7 @@ class UvcCameraView @JvmOverloads constructor(
             scaleX = cameraViewMain.width / viewW,
             scaleY = cameraViewMain.height / viewH
         )
-        sendDetectionsEvent(json, inferenceMs, detector.delegateName)
+        sendDetectionsEvent(json, inferenceMs, detector.delegateName, timings, frameW, frameH)
     }
 
     private fun clearCameraHelper() {
@@ -374,10 +398,11 @@ class UvcCameraView @JvmOverloads constructor(
     private fun handleCameraOpen() {
         synchronized(cameraLock) {
             cameraHelper?.apply {
+                val chosen = choosePreviewSize(this)
                 startPreview()
 
-                // Resize Logic
-                previewSize?.let { size ->
+                // Resize Logic. Prefer the size we set: previewSize can report a stale value.
+                (chosen ?: previewSize)?.let { size ->
                     frameWidth = size.width
                     frameHeight = size.height
                     resizePreviewView(size)
@@ -390,6 +415,32 @@ class UvcCameraView @JvmOverloads constructor(
             }
             applyFrameCallback()
         }
+    }
+
+    /**
+     * Prefers a wide MJPEG mode (1280x720) so the detector gets the full 16:9 view with real detail;
+     * the library default is 640x480, which crops the sides on 16:9 webcams. Keeps the default if the
+     * camera doesn't offer it.
+     */
+    private fun choosePreviewSize(helper: ICameraHelper): Size? {
+        try {
+            val sizes = helper.supportedSizeList ?: return null
+            supportedSizes = sizes.toList()
+            val preferred = sizes.firstOrNull {
+                it.type == UVCCamera.UVC_VS_FRAME_MJPEG &&
+                    it.width == PREFERRED_WIDTH && it.height == PREFERRED_HEIGHT
+            }
+            if (preferred != null) {
+                helper.previewSize = preferred
+                Log.i(TAG, "Preview size ${preferred.width}x${preferred.height} MJPEG")
+                return preferred
+            } else {
+                Log.i(TAG, "No ${PREFERRED_WIDTH}x$PREFERRED_HEIGHT MJPEG mode; keeping ${helper.previewSize}")
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not set preview size, keeping default: ${e.message}")
+        }
+        return null
     }
 
     private fun resizePreviewView(size: Size) {
@@ -430,7 +481,14 @@ class UvcCameraView @JvmOverloads constructor(
         }
     }
 
-    private fun sendDetectionsEvent(detections: String, inferenceMs: Double, delegate: String) {
+    private fun sendDetectionsEvent(
+        detections: String,
+        inferenceMs: Double,
+        delegate: String,
+        timings: YoloDetector.Timings,
+        frameW: Int,
+        frameH: Int,
+    ) {
         if (!isViewAttached) return
         mainHandler.post {
             val reactContext = context as? ReactContext ?: return@post
@@ -438,7 +496,7 @@ class UvcCameraView @JvmOverloads constructor(
             val surfaceId = UIManagerHelper.getSurfaceId(reactContext)
 
             dispatcher?.dispatchEvent(
-                DetectionsEvent(surfaceId, id, detections, inferenceMs, delegate)
+                DetectionsEvent(surfaceId, id, detections, inferenceMs, delegate, timings, frameW, frameH)
             )
         }
     }

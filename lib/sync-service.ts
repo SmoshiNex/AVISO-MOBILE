@@ -4,6 +4,12 @@ import { api } from './api-client';
 import {
   saveTrip,
   endTrip,
+  getTripById,
+  getTripByRemoteId,
+  getUnsyncedEndedTrips,
+  setTripRemoteId,
+  markTripSynced,
+  updateTripFromServer,
   saveHazardLog,
   getUnsyncedHazardLogs,
   deleteNonRoadHazardLogs,
@@ -64,6 +70,8 @@ export async function syncPendingData(): Promise<{ synced: number }> {
   syncInProgress = true;
   let synced = 0;
   try {
+    // Trips first, so detections can be linked to a trip the server already knows.
+    await syncTrips();
     const [hazardCount] = await Promise.all([syncHazardLogs(), syncCrashEvents(), syncRideEvents()]);
     synced = hazardCount;
   } finally {
@@ -120,6 +128,55 @@ async function syncRideEvents(): Promise<void> {
   await pruneSyncedRideEvents();
 }
 
+/** HTTP statuses where retrying can never succeed (bad data, not ours, gone): stop retrying. */
+const isPermanentFailure = (err: unknown): boolean => {
+  const status = (err as { status?: number })?.status;
+  return status === 403 || status === 404 || status === 422;
+};
+
+/**
+ * Delivers ended rides whose start or end never reached the server (no signal, app closed
+ * before the server answered). Creates the trip if needed, then ends it with the phone's real
+ * times and full route.
+ */
+async function syncTrips(): Promise<void> {
+  const trips = await getUnsyncedEndedTrips();
+  for (const trip of trips) {
+    try {
+      let remoteId = trip.remote_id;
+      if (!remoteId) {
+        const response = await api.post<{ data?: { id?: number }; id?: number }>('/rider/trips', {
+          latitude: trip.start_lat,
+          longitude: trip.start_lng,
+          started_at: trip.started_at,
+        });
+        remoteId = response?.data?.id ?? response?.id;
+        if (!remoteId) continue;
+        await setTripRemoteId(trip.id, remoteId);
+      }
+
+      await api.put(`/rider/trips/${remoteId}/end`, {
+        latitude: trip.end_lat ?? trip.current_lat ?? trip.start_lat,
+        longitude: trip.end_lng ?? trip.current_lng ?? trip.start_lng,
+        ended_at: trip.ended_at,
+        route_points: trip.route_points,
+      });
+      await markTripSynced(trip.id, remoteId);
+    } catch (err) {
+      // Already ended on the server, too old, or not this rider's: nothing left to deliver.
+      if (isPermanentFailure(err)) await markTripSynced(trip.id, trip.remote_id ?? 0);
+      // Otherwise (network): stay unsynced, retry on the next run.
+    }
+  }
+}
+
+/** Server id of the ride a detection was saved on, if that ride has reached the server. */
+async function remoteTripId(localTripId?: number): Promise<number | null> {
+  if (!localTripId) return null;
+  const trip = await getTripById(localTripId);
+  return trip?.remote_id ?? null;
+}
+
 async function syncHazardLogs(): Promise<number> {
   await deleteNonRoadHazardLogs();
   const logs = await getUnsyncedHazardLogs();
@@ -138,6 +195,7 @@ async function syncHazardLogs(): Promise<number> {
         distance: log.distance ?? null,
         rider_code: riderCode,
         detected_at: log.detected_at,
+        trip_id: await remoteTripId(log.trip_id),
       });
 
       const remoteId = (response as any)?.data?.id;
@@ -228,6 +286,18 @@ export async function pullFromBackend(force = false): Promise<void> {
         ? JSON.parse(t.route_points)
         : (t.route_points ?? []);
 
+      // Already on the phone (recorded here, or downloaded before): update it instead of duplicating.
+      const existing = await getTripByRemoteId(t.id);
+      if (existing) {
+        await updateTripFromServer(existing.id, {
+          route_points: routePoints.length >= existing.route_points.length ? routePoints : existing.route_points,
+          end_lat: t.end_lat ? parseFloat(String(t.end_lat)) : undefined,
+          end_lng: t.end_lng ? parseFloat(String(t.end_lng)) : undefined,
+          ended_at: t.ended_at ?? undefined,
+        });
+        continue;
+      }
+
       const localId = await saveTrip({
         remote_id:     t.id,
         rider_code:    t.rider_code,
@@ -266,8 +336,11 @@ export async function pullFromBackend(force = false): Promise<void> {
     for (const log of logs) {
       const reconciled = await reconcileHazardLogSynced(log.detected_at, log.type, log.id);
       if (!reconciled) {
+        // The server links detections to its trip id; translate it to this phone's trip.
+        const localTrip = log.trip_id ? await getTripByRemoteId(log.trip_id) : null;
         await saveHazardLog({
           remote_id:   log.id,
+          trip_id:     localTrip?.id,
           type:        log.type,
           confidence:  parseFloat(String(log.confidence)) / 100,
           distance:    log.distance ? parseFloat(String(log.distance)) : undefined,

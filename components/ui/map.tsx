@@ -119,6 +119,11 @@ type MapProps = {
   center?: [number, number];
   /** Initial zoom level */
   zoom?: number;
+  /**
+   * Fit the camera to this area ([longitude, latitude] corners) instead of center/zoom,
+   * e.g. to show a whole trip route. `padding` keeps the edges clear of overlays.
+   */
+  bounds?: { ne: [number, number]; sw: [number, number]; padding?: number };
   /** Keep the camera locked on the user's live position */
   followUserLocation?: boolean;
   /** Fired when the camera settles — carries the visible bounds */
@@ -146,6 +151,7 @@ function Map({
   styles,
   center = [0, 0],
   zoom = 10,
+  bounds,
   followUserLocation = false,
   onMapIdle,
   onCameraChanged,
@@ -187,7 +193,32 @@ function Map({
     }
   };
 
+  const boundsKey = bounds ? `${bounds.ne.join(',')}|${bounds.sw.join(',')}|${bounds.padding ?? 0}` : null;
+  const cameraBounds = useMemo(
+    () =>
+      bounds
+        ? {
+            ne: bounds.ne,
+            sw: bounds.sw,
+            paddingTop: bounds.padding ?? 48,
+            paddingBottom: bounds.padding ?? 48,
+            paddingLeft: bounds.padding ?? 48,
+            paddingRight: bounds.padding ?? 48,
+          }
+        : undefined,
+    // Rebuilt only when the area actually changes, not on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [boundsKey],
+  );
+
   useEffect(() => {
+    if (isLoaded && cameraBounds) {
+      internalCameraRef.current?.setCamera({ bounds: cameraBounds, animationDuration: 0 });
+    }
+  }, [isLoaded, cameraBounds]);
+
+  useEffect(() => {
+    if (cameraBounds) return;
     if (isLoaded && center && !followUserLocation) {
       internalCameraRef.current?.setCamera({
         centerCoordinate: center,
@@ -195,7 +226,7 @@ function Map({
         animationDuration: 1000,
       });
     }
-  }, [center[0], center[1], zoom, followUserLocation, isLoaded]);
+  }, [center[0], center[1], zoom, followUserLocation, isLoaded, cameraBounds]);
 
   return (
     <MapContext.Provider
@@ -216,10 +247,9 @@ function Map({
         >
           <Mapbox.Camera
             ref={internalCameraRef}
-            defaultSettings={{
-              centerCoordinate: center,
-              zoomLevel: zoom,
-            }}
+            defaultSettings={
+              cameraBounds ? { bounds: cameraBounds } : { centerCoordinate: center, zoomLevel: zoom }
+            }
             followUserLocation={followUserLocation}
             animationMode="flyTo"
             animationDuration={1000}

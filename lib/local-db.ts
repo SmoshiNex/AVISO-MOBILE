@@ -93,6 +93,8 @@ async function migrate(handle: SQLite.SQLiteDatabase): Promise<void> {
   const additions = [
     `ALTER TABLE crash_events ADD COLUMN attempts INTEGER DEFAULT 0`,
     `ALTER TABLE crash_events ADD COLUMN event_uid TEXT`,
+    // When the last GPS point of a trip was saved; ends a ride cut short by a crash at that time.
+    `ALTER TABLE trips ADD COLUMN last_point_at TEXT`,
   ];
 
   for (const sql of additions) {
@@ -161,6 +163,98 @@ export async function updateTripLocation(
     `UPDATE trips SET current_lat = ?, current_lng = ?, route_points = ? WHERE id = ?`,
     [lat, lng, JSON.stringify(routePoints), localId],
   );
+}
+
+/**
+ * Adds one GPS point to a trip. Appends inside SQLite instead of rewriting the whole route,
+ * so saving stays fast even on rides with thousands of points.
+ */
+export async function appendTripPoint(localId: number, lat: number, lng: number, at: string): Promise<void> {
+  await getDb().runAsync(
+    `UPDATE trips
+        SET current_lat = ?, current_lng = ?, last_point_at = ?,
+            route_points = json_insert(COALESCE(route_points, '[]'), '$[#]', json_object('lat', ?, 'lng', ?))
+      WHERE id = ?`,
+    [lat, lng, at, lat, lng, localId],
+  );
+}
+
+/** Remembers the server's id for a trip so ending, location updates and detections can reference it. */
+export async function setTripRemoteId(localId: number, remoteId: number): Promise<void> {
+  await getDb().runAsync(`UPDATE trips SET remote_id = ? WHERE id = ?`, [remoteId, localId]);
+}
+
+export async function getTripByRemoteId(remoteId: number): Promise<LocalTrip | null> {
+  const row = await getDb().getFirstAsync<Record<string, unknown>>(
+    `SELECT * FROM trips WHERE remote_id = ? LIMIT 1`,
+    [remoteId],
+  );
+  return row ? rowToTrip(row) : null;
+}
+
+/** Ended rides whose start or end hasn't reached the server yet. */
+export async function getUnsyncedEndedTrips(): Promise<LocalTrip[]> {
+  const rows = await getDb().getAllAsync<Record<string, unknown>>(
+    `SELECT * FROM trips WHERE status = 'ended' AND synced = 0 ORDER BY started_at`,
+  );
+  return rows.map(rowToTrip);
+}
+
+/**
+ * Ends rides left "active" by an earlier app session (crash, force-close) at their last saved
+ * point, so they appear in history and get synced instead of staying open forever.
+ */
+export async function closeStaleActiveTrips(sessionStartIso: string): Promise<number> {
+  const result = await getDb().runAsync(
+    `UPDATE trips
+        SET status = 'ended',
+            end_lat = current_lat,
+            end_lng = current_lng,
+            ended_at = COALESCE(last_point_at, started_at)
+      WHERE status = 'active' AND started_at < ?`,
+    [sessionStartIso],
+  );
+  return result.changes;
+}
+
+/** Updates a trip from the server's copy (download), keeping its local id so detections stay linked. */
+export async function updateTripFromServer(
+  localId: number,
+  t: { route_points: { lat: number; lng: number }[]; end_lat?: number; end_lng?: number; ended_at?: string },
+): Promise<void> {
+  await getDb().runAsync(
+    `UPDATE trips
+        SET route_points = ?, end_lat = COALESCE(?, end_lat), end_lng = COALESCE(?, end_lng),
+            ended_at = COALESCE(?, ended_at), status = CASE WHEN ? IS NOT NULL THEN 'ended' ELSE status END,
+            synced = 1
+      WHERE id = ?`,
+    [
+      JSON.stringify(t.route_points),
+      t.end_lat ?? null,
+      t.end_lng ?? null,
+      t.ended_at ?? null,
+      t.ended_at ?? null,
+      localId,
+    ],
+  );
+}
+
+/** Trips by local id, for labelling detections with their ride. */
+export async function getTripsByIds(ids: number[]): Promise<LocalTrip[]> {
+  if (ids.length === 0) return [];
+  const rows = await getDb().getAllAsync<Record<string, unknown>>(
+    `SELECT * FROM trips WHERE id IN (${ids.map(() => '?').join(',')})`,
+    ids,
+  );
+  return rows.map(rowToTrip);
+}
+
+/** Detections per trip (local id → count); survives reinstalls, unlike the running total. */
+export async function getTripHazardCounts(): Promise<Record<number, number>> {
+  const rows = await getDb().getAllAsync<{ trip_id: number; n: number }>(
+    `SELECT trip_id, COUNT(*) AS n FROM hazard_logs WHERE trip_id IS NOT NULL GROUP BY trip_id`,
+  );
+  return Object.fromEntries(rows.map((r) => [r.trip_id, r.n]));
 }
 
 export async function endTrip(
@@ -442,7 +536,7 @@ export async function getDashboardStats(): Promise<{
 function rowToTrip(r: Record<string, unknown>): LocalTrip {
   return {
     id: r.id as number,
-    remote_id: r.remote_id as number | undefined,
+    remote_id: (r.remote_id as number | null) ?? undefined,
     rider_code: r.rider_code as string,
     start_lat: r.start_lat as number | undefined,
     start_lng: r.start_lng as number | undefined,
@@ -451,6 +545,7 @@ function rowToTrip(r: Record<string, unknown>): LocalTrip {
     end_lat: r.end_lat as number | undefined,
     end_lng: r.end_lng as number | undefined,
     route_points: JSON.parse((r.route_points as string) ?? '[]'),
+    last_point_at: (r.last_point_at as string | null) ?? undefined,
     status: r.status as 'active' | 'ended',
     started_at: r.started_at as string,
     ended_at: r.ended_at as string | undefined,

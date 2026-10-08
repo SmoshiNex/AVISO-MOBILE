@@ -27,6 +27,12 @@ type DetectionsEvent = Readonly<{
   detections: string;
   inferenceMs: CodegenTypes.Double;
   delegate: string;
+  prepMs: CodegenTypes.Double;
+  modelMs: CodegenTypes.Double;
+  boxesMs: CodegenTypes.Double;
+  frameWidth: CodegenTypes.Int32;
+  frameHeight: CodegenTypes.Int32;
+  modelVersion: string;
 }>;
 
 interface NativeProps extends ViewProps {

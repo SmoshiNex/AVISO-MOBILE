@@ -71,12 +71,14 @@ export const styles = StyleSheet.create({
   objectCountDot: { width: 8, height: 8, borderRadius: 4 },
   objectCountText: { color: '#fff', fontSize: 11, fontWeight: '700', maxWidth: 140 },
   detectorChip: {
+    alignItems: 'center',
     backgroundColor: 'rgba(0,0,0,0.5)',
     borderRadius: 12,
     paddingHorizontal: 10,
     paddingVertical: 4,
   },
   detectorChipText: { color: '#E5E7EB', fontSize: 10, fontWeight: '700', letterSpacing: 0.5 },
+  detectorChipSubtext: { color: '#9CA3AF', fontSize: 9, fontWeight: '600', textAlign: 'center' },
   otgPlaceholder: {
     alignItems: 'center',
     justifyContent: 'center',

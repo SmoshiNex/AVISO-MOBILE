@@ -188,6 +188,7 @@ class PhoneDetectionCameraView(context: Context) : FrameLayout(context) {
 
             val start = SystemClock.elapsedRealtime()
             val detections = detector.detect(frameBytes, frameW, frameH, 4, rowStride)
+            val timings = detector.lastTimings
             val inferenceMs = (SystemClock.elapsedRealtime() - start).toDouble()
 
             val drawn = annotator.draw(detections, frameW, frameH)
@@ -209,7 +210,7 @@ class PhoneDetectionCameraView(context: Context) : FrameLayout(context) {
                 scaleX = shownW / viewW,
                 scaleY = shownH / viewH
             )
-            sendDetectionsEvent(json, inferenceMs, detector.delegateName)
+            sendDetectionsEvent(json, inferenceMs, detector.delegateName, timings, frameW, frameH)
         } catch (e: Exception) {
             Log.e(TAG, "Frame analysis failed", e)
         } finally {
@@ -217,13 +218,20 @@ class PhoneDetectionCameraView(context: Context) : FrameLayout(context) {
         }
     }
 
-    private fun sendDetectionsEvent(detections: String, inferenceMs: Double, delegate: String) {
+    private fun sendDetectionsEvent(
+        detections: String,
+        inferenceMs: Double,
+        delegate: String,
+        timings: YoloDetector.Timings,
+        frameW: Int,
+        frameH: Int,
+    ) {
         if (!isViewAttached) return
         mainHandler.post {
             val reactContext = context as? ReactContext ?: return@post
             val dispatcher = UIManagerHelper.getEventDispatcherForReactTag(reactContext, id)
             val surfaceId = UIManagerHelper.getSurfaceId(reactContext)
-            dispatcher?.dispatchEvent(DetectionsEvent(surfaceId, id, detections, inferenceMs, delegate))
+            dispatcher?.dispatchEvent(DetectionsEvent(surfaceId, id, detections, inferenceMs, delegate, timings, frameW, frameH))
         }
     }
 

@@ -9,7 +9,10 @@ class DetectionsEvent(
   viewId: Int,
   private val detections: String,
   private val inferenceMs: Double,
-  private val delegate: String
+  private val delegate: String,
+  private val timings: YoloDetector.Timings,
+  private val frameWidth: Int,
+  private val frameHeight: Int
 ) : Event<DetectionsEvent>(surfaceId, viewId) {
 
   override fun getEventName(): String {
@@ -26,6 +29,12 @@ class DetectionsEvent(
     event.putString("detections", detections)
     event.putDouble("inferenceMs", inferenceMs)
     event.putString("delegate", delegate)
+    event.putDouble("prepMs", timings.prepMs)
+    event.putDouble("modelMs", timings.modelMs)
+    event.putDouble("boxesMs", timings.boxesMs)
+    event.putInt("frameWidth", frameWidth)
+    event.putInt("frameHeight", frameHeight)
+    event.putString("modelVersion", YoloDetector.MODEL_VERSION)
     return event
   }
 }

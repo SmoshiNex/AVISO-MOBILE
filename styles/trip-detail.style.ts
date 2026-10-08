@@ -1,0 +1,41 @@
+import { StyleSheet } from 'react-native';
+import { Spacing, Radius, Fonts } from '@/constants/theme';
+
+export const styles = StyleSheet.create({
+  container: { flex: 1 },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: Spacing.md },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.md,
+    borderBottomWidth: 1,
+  },
+  iconBtn: { padding: Spacing.xs },
+  headerTitle: { fontSize: 18, fontFamily: Fonts.bold, flex: 1 },
+  emptyText: { fontSize: 16, fontFamily: Fonts.medium },
+  backLink: { fontSize: 15, fontFamily: Fonts.semibold },
+  mapWrap: { flex: 1 },
+  markerDot: { width: 16, height: 16, borderRadius: 8, borderWidth: 3, borderColor: '#fff', elevation: 4 },
+  summary: {
+    position: 'absolute',
+    left: Spacing.md,
+    right: Spacing.md,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    padding: Spacing.md,
+    gap: Spacing.sm,
+    elevation: 6,
+  },
+  placesRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+  placeBlock: { flex: 1, gap: 2 },
+  placeLabel: { fontSize: 11, fontFamily: Fonts.medium, textTransform: 'uppercase', letterSpacing: 0.5 },
+  placeName: { fontSize: 15, fontFamily: Fonts.bold },
+  placeTime: { fontSize: 12, fontFamily: Fonts.regular },
+  dot: { width: 10, height: 10, borderRadius: 5 },
+  stats: { flexDirection: 'row', justifyContent: 'space-between', borderTopWidth: 1, paddingTop: Spacing.sm },
+  stat: { alignItems: 'center', flex: 1, gap: 2 },
+  statValue: { fontSize: 16, fontFamily: Fonts.bold, fontVariant: ['tabular-nums'] },
+  statLabel: { fontSize: 11, fontFamily: Fonts.medium },
+});

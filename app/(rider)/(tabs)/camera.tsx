@@ -18,6 +18,7 @@ import {
     type CameraError as UvcCameraError,
     type RawDetection,
     type DetectionInfo,
+    prepareDetector,
 } from "@kartik512/react-native-uvc-camera";
 import * as Location from "expo-location";
 import { Accelerometer, Gyroscope } from "expo-sensors";
@@ -27,7 +28,8 @@ import { useThemeColor } from "@/hooks/use-theme-color";
 import { useTripContext } from "@/contexts/trip-context";
 import { classify } from "@/lib/detection-classifier";
 import { announce, stopAllSpeech } from "@/lib/voice-queue";
-import { AlertGate, alertKey, type Alert } from "@/lib/alert-gate";
+import { AlertGate, alertKey, type Alert, type HazardSave } from "@/lib/alert-gate";
+import { DISPLAY_MIN_CONFIDENCE } from "@/constants/detection-tuning";
 import { useArHeading } from "@/hooks/use-ar-heading";
 import { AlertCard } from "@/components/ar/AlertCard";
 import { CompassArrow } from "@/components/ar/CompassArrow";
@@ -36,7 +38,7 @@ import { saveHazardLog, incrementTripHazards } from "@/lib/local-db";
 import { api } from "@/lib/api-client";
 import * as Network from "expo-network";
 import * as SecureStore from "expo-secure-store";
-import { MODEL_CLASS_NAMES, modelClassColor, modelClassName, isRoadHazard } from "@/constants/hazards";
+import { MODEL_CLASS_NAMES, modelClassColor, modelClassName } from "@/constants/hazards";
 import { classifyRideState } from "@/lib/ride-state-classifier";
 import type { DetectionResult } from "@/types";
 import { styles } from "@/styles/camera.style";
@@ -62,10 +64,20 @@ type TrackedAlert = { key: string; bbox: BBox; lastSeenAt: number; shownAt: numb
 
 const centerDistance = (a: BBox, b: BBox) =>
     Math.hypot(a.x + a.w / 2 - (b.x + b.w / 2), a.y + a.h / 2 - (b.y + b.h / 2));
-const LOG_COOLDOWN_MS = 8000;
-const lastLoggedAt: Record<string, number> = {};
 
-type DetectorStats = { fps: number; ms: number; delegate: string };
+// Averages over the last second; prep/model/boxes split where the detector spends its time.
+type DetectorStats = {
+    fps: number;
+    ms: number;
+    prepMs: number;
+    modelMs: number;
+    boxesMs: number;
+    delegate: string;
+    frameWidth: number;
+    frameHeight: number;
+    modelVersion: string;
+};
+const EMPTY_STATS_WINDOW = { frames: 0, since: 0, ms: 0, prepMs: 0, modelMs: 0, boxesMs: 0 };
 
 export default function CameraScreen() {
     const [permission, requestPermission] = useCameraPermissions();
@@ -99,7 +111,9 @@ export default function CameraScreen() {
     // The on-device model only runs while this tab is open and a ride is live.
     const detectionEnabled = isFocused && isActive;
     const [detectorStats, setDetectorStats] = useState<DetectorStats | null>(null);
-    const statsRef = useRef({ frames: 0, since: 0 });
+    // The model loads once per app start; the first load after install can take minutes on some GPUs.
+    const [detectorState, setDetectorState] = useState<"preparing" | "ready" | "failed">("preparing");
+    const statsRef = useRef({ ...EMPTY_STATS_WINDOW });
     // How many of each object are in view right now, most frequent first.
     const objectCounts = useMemo(() => {
         const counts = new Map<string, { label: string; color: string; count: number }>();
@@ -112,8 +126,75 @@ export default function CameraScreen() {
         return [...counts.values()].sort((a, b) => b.count - a.count);
     }, [detections]);
 
+    // Records one confirmed road hazard: POST when online, always queue locally.
+    const saveHazard = useCallback(
+        async (save: HazardSave) => {
+            const result = save.detection;
+            try {
+                let coords = save.position;
+                if (!coords) {
+                    const last = await Location.getLastKnownPositionAsync();
+                    coords = last ? last.coords : null;
+                }
+                if (!coords) return; // Location unavailable — skip logging
+                const { latitude, longitude } = coords;
+                const detected_at = new Date(save.at).toISOString();
+
+                // Online-first: POST to backend immediately when connected.
+                // Falls back to SQLite queue (synced=false) when offline or backend unreachable.
+                const networkState = await Network.getNetworkStateAsync();
+                const isOnline =
+                    networkState.isConnected === true &&
+                    networkState.isInternetReachable !== false;
+
+                let synced = false;
+                let remoteId: number | undefined;
+                // The server resolves the real barangay from the GPS point; until then the area stays unknown.
+                let area: string | undefined;
+
+                if (isOnline) {
+                    try {
+                        const response = (await api.post("/rider/hazard-logs", {
+                            type: result.type,
+                            latitude,
+                            longitude,
+                            confidence: result.confidence,
+                            distance: result.distance ?? null,
+                            rider_code: riderCodeRef.current,
+                            detected_at,
+                            // The ride it was seen on; the server also matches by time if unknown.
+                            trip_id: trip?.remote_id ?? null,
+                        })) as any;
+                        remoteId = response?.data?.id ?? undefined;
+                        area = response?.data?.area ?? undefined;
+                        synced = !!remoteId;
+                    } catch {
+                        // Backend unreachable — save to offline queue, batch sync retries
+                    }
+                }
+
+                await saveHazardLog({
+                    remote_id: remoteId,
+                    trip_id: trip?.id,
+                    type: result.type,
+                    confidence: result.confidence,
+                    distance: result.distance,
+                    latitude,
+                    longitude,
+                    area,
+                    detected_at,
+                    synced,
+                });
+                if (trip?.id) await incrementTripHazards(trip.id);
+            } catch {
+                // Saving failed — the next encounter will try again
+            }
+        },
+        [trip],
+    );
+
     const handleDetections = useCallback(
-        async (results: DetectionResult[]) => {
+        (results: DetectionResult[]) => {
             if (!isActive) {
                 setDetections([]);
                 return;
@@ -122,7 +203,9 @@ export default function CameraScreen() {
             // Popup + voice: at most one alert, and only for objects that are
             // new — not on every frame the object stays in view.
             const now = Date.now();
-            const alert = alertGate.process(results, now, positionRef.current);
+            const { alert, saves } = alertGate.process(results, now, positionRef.current);
+            // Weak detections (below the display threshold) only count as evidence for the gate.
+            const shown = results.filter((r) => r.confidence >= DISPLAY_MIN_CONFIDENCE);
             if (alert) {
                 setActiveAlert({ alert, id: now });
                 if (alertTimer.current) clearTimeout(alertTimer.current);
@@ -149,7 +232,7 @@ export default function CameraScreen() {
             } else if (trackRef.current) {
                 const track = trackRef.current;
                 let best: DetectionResult | null = null;
-                for (const d of results) {
+                for (const d of shown) {
                     if (alertKey(d) !== track.key) continue;
                     if (!best || centerDistance(d.bbox, track.bbox) < centerDistance(best.bbox, track.bbox)) best = d;
                 }
@@ -169,100 +252,25 @@ export default function CameraScreen() {
                 }
             }
 
-            if (results.length > 0) {
+            // Road hazards whose encounter ended after meeting the strict save rule:
+            // one save per encounter, from its closest sighting.
+            for (const save of saves) void saveHazard(save);
+
+            if (shown.length > 0) {
                 if (detectionClearTimerRef.current) {
                     clearTimeout(detectionClearTimerRef.current);
                     detectionClearTimerRef.current = null;
                 }
-                setDetections(results);
-            } else {
+                setDetections(shown);
+            } else if (!detectionClearTimerRef.current) {
                 // One pending clear at a time, or boxes flicker at real frame rates.
-                if (!detectionClearTimerRef.current) {
-                    detectionClearTimerRef.current = setTimeout(() => {
-                        detectionClearTimerRef.current = null;
-                        setDetections([]);
-                    }, 1500);
-                }
-                return;
-            }
-
-            for (const result of results) {
-                if (result.confidence < 0.6) continue;
-
-                // Lights and signs only warn the rider below; only road
-                // hazards are recorded.
-                const now = Date.now();
-                if (
-                    isRoadHazard(result.type) &&
-                    (!lastLoggedAt[result.type] ||
-                        now - lastLoggedAt[result.type] > LOG_COOLDOWN_MS)
-                ) {
-                    lastLoggedAt[result.type] = now;
-
-                    try {
-                        const location =
-                            await Location.getLastKnownPositionAsync();
-                        if (location) {
-                            const { latitude, longitude } = location.coords;
-                            const detected_at = new Date().toISOString();
-
-                            // Online-first: POST to backend immediately when connected.
-                            // Falls back to SQLite queue (synced=false) when offline or backend unreachable.
-                            const networkState =
-                                await Network.getNetworkStateAsync();
-                            const isOnline =
-                                networkState.isConnected === true &&
-                                networkState.isInternetReachable !== false;
-
-                            let synced = false;
-                            let remoteId: number | undefined;
-                            // The server resolves the real barangay from the
-                            // GPS point; until then the area stays unknown.
-                            let area: string | undefined;
-
-                            if (isOnline) {
-                                try {
-                                    const response = (await api.post(
-                                        "/rider/hazard-logs",
-                                        {
-                                            type: result.type,
-                                            latitude,
-                                            longitude,
-                                            confidence: result.confidence,
-                                            distance: result.distance ?? null,
-                                            rider_code: riderCodeRef.current,
-                                            detected_at,
-                                        },
-                                    )) as any;
-                                    remoteId = response?.data?.id ?? undefined;
-                                    area = response?.data?.area ?? undefined;
-                                    synced = !!remoteId;
-                                } catch {
-                                    // Backend unreachable — save to offline queue, batch sync retries
-                                }
-                            }
-
-                            await saveHazardLog({
-                                remote_id: remoteId,
-                                trip_id: trip?.id,
-                                type: result.type,
-                                confidence: result.confidence,
-                                distance: result.distance,
-                                latitude,
-                                longitude,
-                                area,
-                                detected_at,
-                                synced,
-                            });
-                            if (trip?.id) await incrementTripHazards(trip.id);
-                        }
-                    } catch {
-                        // Location unavailable — skip logging
-                    }
-                }
+                detectionClearTimerRef.current = setTimeout(() => {
+                    detectionClearTimerRef.current = null;
+                    setDetections([]);
+                }, 1500);
             }
         },
-        [trip, isActive, positionRef],
+        [isActive, positionRef, saveHazard],
     );
 
     useEffect(() => {
@@ -294,28 +302,54 @@ export default function CameraScreen() {
                 .filter((r): r is DetectionResult => r !== null);
             handleDetectionsRef.current(results);
 
-            // Frames checked per second, refreshed once a second.
+            // Frames checked per second and average time per frame, refreshed once a second.
             const stats = statsRef.current;
             const now = Date.now();
             if (!stats.since) stats.since = now;
             stats.frames += 1;
+            stats.ms += info.inferenceMs;
+            stats.prepMs += info.prepMs ?? 0;
+            stats.modelMs += info.modelMs ?? 0;
+            stats.boxesMs += info.boxesMs ?? 0;
             const elapsed = now - stats.since;
             if (elapsed >= 1000) {
+                const n = stats.frames;
                 setDetectorStats({
-                    fps: (stats.frames * 1000) / elapsed,
-                    ms: info.inferenceMs,
+                    fps: (n * 1000) / elapsed,
+                    ms: stats.ms / n,
+                    prepMs: stats.prepMs / n,
+                    modelMs: stats.modelMs / n,
+                    boxesMs: stats.boxesMs / n,
                     delegate: info.delegate,
+                    frameWidth: info.frameWidth ?? 0,
+                    frameHeight: info.frameHeight ?? 0,
+                    modelVersion: info.modelVersion ?? "",
                 });
-                stats.frames = 0;
-                stats.since = now;
+                statsRef.current = { ...EMPTY_STATS_WINDOW, since: now };
             }
         },
         [],
     );
 
+    // Load the model as soon as the camera tab opens, before the rider starts a ride.
+    useEffect(() => {
+        if (!isFocused || detectorState !== "preparing") return;
+        let cancelled = false;
+        prepareDetector()
+            .then(() => {
+                if (!cancelled) setDetectorState("ready");
+            })
+            .catch(() => {
+                if (!cancelled) setDetectorState("failed");
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [isFocused, detectorState]);
+
     // Start the speed reading fresh when detection stops or the camera changes.
     useEffect(() => {
-        statsRef.current = { frames: 0, since: 0 };
+        statsRef.current = { ...EMPTY_STATS_WINDOW };
         setDetectorStats(null);
     }, [detectionEnabled, sourceMode]);
 
@@ -486,6 +520,7 @@ export default function CameraScreen() {
                     visibility={visibility}
                     angleRef={angleRef}
                     compassRef={compassRef}
+                    compact={sourceMode === "otg"}
                 />
             )}
 
@@ -504,7 +539,7 @@ export default function CameraScreen() {
                 />
             )}
 
-            {(objectCounts.length > 0 || detectorStats) && (
+            {(objectCounts.length > 0 || detectorStats || detectorState !== "ready") && (
                 <View style={styles.detectorPanel} pointerEvents="none">
                     {objectCounts.length > 0 && (
                         <View style={styles.objectCountRow}>
@@ -518,10 +553,28 @@ export default function CameraScreen() {
                             ))}
                         </View>
                     )}
+                    {!detectorStats && detectorState !== "ready" && (
+                        <View style={styles.detectorChip}>
+                            <Text style={styles.detectorChipText}>
+                                {detectorState === "failed" ? "Detector unavailable" : "Preparing detector…"}
+                            </Text>
+                            {detectorState === "preparing" && (
+                                <Text style={styles.detectorChipSubtext}>
+                                    First start after install can take up to 2 minutes
+                                </Text>
+                            )}
+                        </View>
+                    )}
                     {detectorStats && (
                         <View style={styles.detectorChip}>
                             <Text style={styles.detectorChipText}>
                                 {`${detectorStats.fps.toFixed(1)} FPS · ${Math.round(detectorStats.ms)} ms · ${detectorStats.delegate}`}
+                            </Text>
+                            <Text style={styles.detectorChipSubtext}>
+                                {`prep ${Math.round(detectorStats.prepMs)} · model ${Math.round(detectorStats.modelMs)} · boxes ${Math.round(detectorStats.boxesMs)} ms`}
+                                {detectorStats.frameWidth > 0 &&
+                                    ` · ${detectorStats.frameWidth}×${detectorStats.frameHeight}`}
+                                {detectorStats.modelVersion !== "" && ` · ${detectorStats.modelVersion}`}
                             </Text>
                         </View>
                     )}

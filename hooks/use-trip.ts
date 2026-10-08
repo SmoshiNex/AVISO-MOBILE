@@ -5,9 +5,12 @@ import * as Location from 'expo-location';
 import { api } from '@/lib/api-client';
 import {
   saveTrip,
-  updateTripLocation,
+  appendTripPoint,
   endTrip as dbEndTrip,
   getActiveTrip,
+  setTripRemoteId,
+  markTripSynced,
+  closeStaleActiveTrips,
 } from '@/lib/local-db';
 import type { LocalTrip } from '@/types';
 
@@ -24,16 +27,20 @@ export function useTrip() {
   const routePointsRef = useRef<Array<{ lat: number; lng: number }>>([]);
 
   // Resume any in-progress trip on mount — but only if it started in this session.
-  // Trips from a previous crashed session are skipped to prevent auto-start on tab switch.
+  // Trips left open by a previous session (crash, force-close) are ended at their last saved
+  // point, so they show in history and get synced instead of staying open forever.
   useEffect(() => {
-    getActiveTrip().then((active) => {
+    closeStaleActiveTrips(new Date(SESSION_START).toISOString())
+      .catch(() => 0)
+      .then(() => getActiveTrip())
+      .then((active) => {
       if (!active) return;
       const startedAt = new Date(active.started_at).getTime();
       if (startedAt < SESSION_START) return; // stale crash survivor — ignore
       setTrip(active);
       setIsActive(true);
       routePointsRef.current = active.route_points ?? [];
-    });
+      });
   }, []);
 
   const startTrip = useCallback(async () => {
@@ -84,16 +91,17 @@ export function useTrip() {
     setTrip(newTrip);
     setIsActive(true);
 
-    // POST to backend (non-blocking)
+    // POST to backend (non-blocking). The server wraps the trip in `data`. If this fails
+    // (no signal), the background sync creates the trip on the server after the ride ends.
     api.post('/rider/trips', {
-      rider_code: riderCode,
       latitude,
       longitude,
-    }).then((response: any) => {
-      if (response?.id) {
-        // Store remote_id for location updates
-        setTrip((prev) => prev ? { ...prev, remote_id: response.id } : prev);
-      }
+      started_at: startedAt,
+    }).then(async (response: any) => {
+      const remoteId: number | undefined = response?.data?.id ?? response?.id;
+      if (!remoteId) return;
+      await setTripRemoteId(localId, remoteId);
+      setTrip((prev) => (prev && prev.id === localId ? { ...prev, remote_id: remoteId } : prev));
     }).catch(() => {});
   }, []);
 
@@ -113,12 +121,22 @@ export function useTrip() {
     const endedAt = new Date().toISOString();
 
     await dbEndTrip(trip.id, latitude, longitude, endedAt);
+    const routePoints = routePointsRef.current;
     setTrip(null);
     setIsActive(false);
     routePointsRef.current = [];
 
+    // Unsynced on failure: the background sync retries with the same times and route.
     if (trip.remote_id) {
-      api.put(`/rider/trips/${trip.remote_id}/end`, { latitude, longitude }).catch(() => {});
+      const remoteId = trip.remote_id;
+      api.put(`/rider/trips/${remoteId}/end`, {
+        latitude,
+        longitude,
+        ended_at: endedAt,
+        route_points: routePoints,
+      })
+        .then(() => markTripSynced(trip.id, remoteId))
+        .catch(() => {});
     }
   }, [trip]);
 
@@ -135,7 +153,7 @@ export function useTrip() {
 
         routePointsRef.current = [...routePointsRef.current, { lat: latitude, lng: longitude }];
 
-        await updateTripLocation(trip.id, latitude, longitude, routePointsRef.current);
+        await appendTripPoint(trip.id, latitude, longitude, new Date().toISOString());
         setTrip((prev) =>
           prev ? { ...prev, current_lat: latitude, current_lng: longitude, route_points: routePointsRef.current } : prev
         );

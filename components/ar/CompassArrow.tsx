@@ -18,10 +18,17 @@ type CompassArrowProps = {
   visibility: SharedValue<number>;
   angleRef: React.MutableRefObject<number>;
   compassRef: React.MutableRefObject<number | null>;
+  /**
+   * Small version that sits in the empty band under the video instead of over the road.
+   * Used for the USB webcam, whose video is only a strip in the middle of the screen.
+   */
+  compact?: boolean;
 };
 
-const ARROW_SIZE = 120;
-const RING_SIZE = 190;
+const FULL = { arrow: 120, ring: 190, bob: -10, chipFont: 12, chipPadH: 12, chipPadV: 6, chipsGap: -40 };
+const COMPACT = { arrow: 56, ring: 92, bob: -5, chipFont: 10, chipPadH: 8, chipPadV: 3, chipsGap: -22 };
+/** Bottom edge of the compact arrow: just above the Ride Live bar (sessionBar bottom 100 + its height). */
+const COMPACT_BOTTOM = 156;
 const GROUND_TILT = '58deg';
 const ON_COURSE_DEG = 10;
 const CARDINALS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
@@ -38,15 +45,16 @@ const RING = '#22D3EE';
  * Plain views + SVG with a perspective tilt (no 3D engine), so it always
  * draws over the camera video and leaves the GPU to the detection model.
  */
-export function CompassArrow({ angle, visibility, angleRef, compassRef }: CompassArrowProps) {
+export function CompassArrow({ angle, visibility, angleRef, compassRef, compact = false }: CompassArrowProps) {
+  const size = compact ? COMPACT : FULL;
   const bob = useSharedValue(0);
   const ring = useSharedValue(0.5);
   const [status, setStatus] = useState({ text: 'ON COURSE', bearing: '', source: '' });
 
   useEffect(() => {
-    bob.value = withRepeat(withSequence(withTiming(-10, { duration: 900 }), withTiming(0, { duration: 900 })), -1);
+    bob.value = withRepeat(withSequence(withTiming(size.bob, { duration: 900 }), withTiming(0, { duration: 900 })), -1);
     ring.value = withRepeat(withSequence(withTiming(0.9, { duration: 1100 }), withTiming(0.5, { duration: 1100 })), -1);
-  }, [bob, ring]);
+  }, [bob, ring, size.bob]);
 
   // Text chips: 2 updates per second is plenty and keeps React work tiny.
   useEffect(() => {
@@ -74,22 +82,22 @@ export function CompassArrow({ angle, visibility, angleRef, compassRef }: Compas
   const ringStyle = useAnimatedStyle(() => ({ opacity: ring.value }));
 
   return (
-    <Animated.View pointerEvents="none" style={[styles.anchor, containerStyle]}>
+    <Animated.View pointerEvents="none" style={[styles.anchor, compact ? styles.anchorCompact : styles.anchorFull, containerStyle]}>
       {/* Ground ring + shadow, lying on the road */}
       <View style={styles.ground}>
         <Animated.View style={ringStyle}>
-          <Svg width={RING_SIZE} height={RING_SIZE}>
-            <Circle cx={RING_SIZE / 2} cy={RING_SIZE / 2} r={RING_SIZE / 2 - 6} stroke={RING} strokeWidth={4} fill="rgba(34,211,238,0.12)" />
-            <Circle cx={RING_SIZE / 2} cy={RING_SIZE / 2} r={RING_SIZE / 2 - 30} stroke={RING} strokeWidth={2} strokeDasharray="8 8" fill="none" />
+          <Svg width={size.ring} height={size.ring} viewBox="0 0 190 190">
+            <Circle cx={95} cy={95} r={89} stroke={RING} strokeWidth={4} fill="rgba(34,211,238,0.12)" />
+            <Circle cx={95} cy={95} r={65} stroke={RING} strokeWidth={2} strokeDasharray="8 8" fill="none" />
           </Svg>
         </Animated.View>
       </View>
 
       {/* Floating arrow, same ground plane, bobbing above the ring */}
-      <Animated.View style={[styles.arrowLayer, floatStyle]}>
+      <Animated.View style={[styles.arrowLayer, { top: (size.ring - size.arrow * 1.15) / 2 - size.ring / 8 }, floatStyle]}>
         <View style={styles.ground}>
           <Animated.View style={turnStyle}>
-            <Svg width={ARROW_SIZE} height={ARROW_SIZE * 1.15} viewBox="0 0 120 138">
+            <Svg width={size.arrow} height={size.arrow * 1.15} viewBox="0 0 120 138">
               {/* Side/thickness: the outline shifted toward the viewer */}
               <Polygon points="60,10 0,130 60,106 120,130" fill={FACE_SIDE} />
               {/* Folded top: lit left face, shaded right face, bright ridge */}
@@ -102,16 +110,16 @@ export function CompassArrow({ angle, visibility, angleRef, compassRef }: Compas
         </View>
       </Animated.View>
 
-      <View style={styles.chips}>
-        <View style={styles.chip}>
-          <Text style={styles.chipText}>{status.text}</Text>
+      <View style={[styles.chips, { marginTop: size.chipsGap }]}>
+        <View style={[styles.chip, { paddingHorizontal: size.chipPadH, paddingVertical: size.chipPadV }]}>
+          <Text style={[styles.chipText, { fontSize: size.chipFont }]}>{status.text}</Text>
         </View>
-        <View style={styles.chip}>
-          <Text style={styles.chipText}>{status.source}</Text>
+        <View style={[styles.chip, { paddingHorizontal: size.chipPadH, paddingVertical: size.chipPadV }]}>
+          <Text style={[styles.chipText, { fontSize: size.chipFont }]}>{status.source}</Text>
         </View>
         {status.bearing !== '' && (
-          <View style={styles.chip}>
-            <Text style={styles.chipText}>{status.bearing} BRG</Text>
+          <View style={[styles.chip, { paddingHorizontal: size.chipPadH, paddingVertical: size.chipPadV }]}>
+            <Text style={[styles.chipText, { fontSize: size.chipFont }]}>{status.bearing} BRG</Text>
           </View>
         )}
       </View>
@@ -124,9 +132,10 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 0,
     right: 0,
-    top: '42%',
     alignItems: 'center',
   },
+  anchorFull: { top: '42%' },
+  anchorCompact: { bottom: COMPACT_BOTTOM },
   ground: {
     alignItems: 'center',
     justifyContent: 'center',
@@ -134,24 +143,19 @@ const styles = StyleSheet.create({
   },
   arrowLayer: {
     position: 'absolute',
-    top: (RING_SIZE - ARROW_SIZE * 1.15) / 2 - 24,
   },
   chips: {
     flexDirection: 'row',
     gap: 8,
-    marginTop: -40,
   },
   chip: {
     backgroundColor: 'rgba(15,23,42,0.8)',
     borderColor: 'rgba(34,211,238,0.6)',
     borderWidth: 1,
     borderRadius: 16,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
   },
   chipText: {
     color: '#ECFEFF',
-    fontSize: 12,
     fontWeight: '700',
     letterSpacing: 0.5,
   },

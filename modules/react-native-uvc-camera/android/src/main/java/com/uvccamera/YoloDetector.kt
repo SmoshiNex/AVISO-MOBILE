@@ -1,6 +1,7 @@
 package com.uvccamera
 
 import android.content.Context
+import android.os.SystemClock
 import android.util.Log
 import org.json.JSONArray
 import org.json.JSONObject
@@ -9,6 +10,12 @@ import org.tensorflow.lite.gpu.CompatibilityList
 import org.tensorflow.lite.gpu.GpuDelegate
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.util.concurrent.Callable
+import java.util.concurrent.ExecutionException
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
+import java.util.concurrent.Future
+import java.util.zip.CRC32
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
@@ -17,12 +24,16 @@ import kotlin.math.roundToInt
  * Runs the AVISO YOLOv8n model (assets/aviso-yolov8.tflite) on camera frames.
  *
  * Model contract (checked against the exported file):
- *  - input  float32 [1, 3, S, S] (channels first) or [1, S, S, 3], RGB scaled to 0..1, letterboxed with gray 114
+ *  - input  float32 [1, 3, H, W] (channels first) or [1, H, W, 3], RGB scaled to 0..1, letterboxed with gray 114.
+ *    H and W may differ (e.g. 544x960 for a 16:9 camera), so the frame is fitted to both separately.
  *  - output float32 [1, 4 + classes, N]: cx, cy, w, h (normalized 0..1) + one score per class, no NMS
  *
  * Boxes are returned top-left x, y, w, h as fractions of the source frame, matching classify() in the app.
- * One shared instance: only one camera runs detection at a time. Not thread-safe across callers, so
- * detect() is synchronized.
+ * One shared instance, owned by a single detector thread: the GPU delegate is created and always run
+ * on that thread, whichever camera (USB or phone) submits frames. Callers block until their frame is done.
+ *
+ * The GPU's compiled programs are cached on disk (GPU delegate serialization), so only the first load
+ * after installing a model is slow; later app starts reuse the cache.
  */
 class YoloDetector private constructor(context: Context) {
 
@@ -39,7 +50,15 @@ class YoloDetector private constructor(context: Context) {
     private val interpreter: Interpreter
     val delegateName: String
 
-    private val inputSize: Int
+    /** Time spent in each step of the last detect() call, in milliseconds. */
+    data class Timings(val prepMs: Double, val modelMs: Double, val boxesMs: Double)
+
+    @Volatile
+    var lastTimings = Timings(0.0, 0.0, 0.0)
+        private set
+
+    private val inputW: Int
+    private val inputH: Int
     private val channelsFirst: Boolean
     private val numChannels: Int
     private val numAnchors: Int
@@ -67,21 +86,38 @@ class YoloDetector private constructor(context: Context) {
     private var y1Lut = IntArray(0)
     private var yWeight = FloatArray(0)
 
-    // Source rows already resized horizontally (RGB floats, 0..255); upscaling reuses each one
-    private var rowA = FloatArray(0)
-    private var rowB = FloatArray(0)
-    private var rowAIndex = -1
-    private var rowBIndex = -1
+    // Source rows already resized horizontally (RGB floats, 0..255), one cache per prep worker
+    private class RowCache(width: Int) {
+        val rowA = FloatArray(width * 3)
+        val rowB = FloatArray(width * 3)
+        var rowAIndex = -1
+        var rowBIndex = -1
+    }
+    private var rowCaches: Array<RowCache> = emptyArray()
 
     init {
-        val model = loadModel(context)
+        val modelBytes = context.assets.open(MODEL_ASSET).use { it.readBytes() }
+        val model = ByteBuffer.allocateDirect(modelBytes.size).order(ByteOrder.nativeOrder()).apply {
+            put(modelBytes)
+            rewind()
+        }
+        // Cache key changes whenever the bundled model file changes, so a stale cache is never reused.
+        val modelToken = "$MODEL_VERSION-${CRC32().apply { update(modelBytes) }.value.toString(16)}"
+        val startMs = SystemClock.elapsedRealtime()
         var delegate: GpuDelegate? = null
         var created: Interpreter? = null
 
         val compat = CompatibilityList()
         if (compat.isDelegateSupportedOnThisDevice) {
             try {
-                delegate = GpuDelegate(compat.bestOptionsForThisDevice)
+                // Lets the GPU compute in FP16 even though the model file is FP32 (faster, near-identical results).
+                // Serialization saves the compiled GPU programs, turning later loads from minutes into seconds.
+                delegate = GpuDelegate(
+                    compat.bestOptionsForThisDevice.apply {
+                        setPrecisionLossAllowed(true)
+                        setSerializationParams(context.codeCacheDir.absolutePath, modelToken)
+                    }
+                )
                 created = Interpreter(model, Interpreter.Options().addDelegate(delegate))
             } catch (e: Throwable) {
                 Log.w(TAG, "GPU delegate failed, falling back to CPU: ${e.message}")
@@ -98,7 +134,8 @@ class YoloDetector private constructor(context: Context) {
 
         val inShape = interpreter.getInputTensor(0).shape()
         channelsFirst = inShape[1] == 3
-        inputSize = if (channelsFirst) inShape[2] else inShape[1]
+        inputH = if (channelsFirst) inShape[2] else inShape[1]
+        inputW = if (channelsFirst) inShape[3] else inShape[2]
 
         val outShape = interpreter.getOutputTensor(0).shape()
         outputChannelsFirst = outShape[1] < outShape[2]
@@ -106,14 +143,15 @@ class YoloDetector private constructor(context: Context) {
         numAnchors = if (outputChannelsFirst) outShape[2] else outShape[1]
         numClasses = numChannels - 4
 
-        inputArray = FloatArray(3 * inputSize * inputSize)
+        inputArray = FloatArray(3 * inputW * inputH)
         inputBuffer = ByteBuffer.allocateDirect(inputArray.size * 4).order(ByteOrder.nativeOrder())
         outputArray = FloatArray(numChannels * numAnchors)
         outputBuffer = ByteBuffer.allocateDirect(outputArray.size * 4).order(ByteOrder.nativeOrder())
 
         Log.i(
             TAG,
-            "Loaded model on $delegateName: input ${inShape.contentToString()}, " +
+            "Loaded model on $delegateName in ${SystemClock.elapsedRealtime() - startMs} ms " +
+                "(thread ${Thread.currentThread().name}): input ${inShape.contentToString()}, " +
                 "output ${outShape.contentToString()}, $numClasses classes"
         )
     }
@@ -122,24 +160,38 @@ class YoloDetector private constructor(context: Context) {
      * @param pixels packed frame bytes, [bytesPerPixel] bytes per pixel in R, G, B(, X) order
      * @param rowStride bytes per row (may be larger than width * bytesPerPixel)
      */
-    @Synchronized
     fun detect(
         pixels: ByteArray,
         width: Int,
         height: Int,
         bytesPerPixel: Int,
         rowStride: Int = width * bytesPerPixel,
-    ): List<Detection> {
-        fillInput(pixels, width, height, bytesPerPixel, rowStride)
+    ): List<Detection> = onDetectorThread { detectNow(pixels, width, height, bytesPerPixel, rowStride) }
 
+    private fun detectNow(
+        pixels: ByteArray,
+        width: Int,
+        height: Int,
+        bytesPerPixel: Int,
+        rowStride: Int,
+    ): List<Detection> {
+        val t0 = SystemClock.elapsedRealtimeNanos()
+        fillInput(pixels, width, height, bytesPerPixel, rowStride)
         inputBuffer.rewind()
         inputBuffer.asFloatBuffer().put(inputArray)
+
+        val t1 = SystemClock.elapsedRealtimeNanos()
         outputBuffer.rewind()
         interpreter.run(inputBuffer, outputBuffer)
         outputBuffer.rewind()
         outputBuffer.asFloatBuffer().get(outputArray)
 
-        return decode(width, height)
+        val t2 = SystemClock.elapsedRealtimeNanos()
+        val detections = decode(width, height)
+        val t3 = SystemClock.elapsedRealtimeNanos()
+
+        lastTimings = Timings((t1 - t0) / 1e6, (t2 - t1) / 1e6, (t3 - t2) / 1e6)
+        return detections
     }
 
     fun close() {
@@ -148,13 +200,12 @@ class YoloDetector private constructor(context: Context) {
     }
 
     private fun fillInput(pixels: ByteArray, width: Int, height: Int, bpp: Int, rowStride: Int) {
-        val s = inputSize
         if (width != lastFrameW || height != lastFrameH) {
-            scale = min(s.toFloat() / width, s.toFloat() / height)
-            scaledW = (width * scale).roundToInt().coerceIn(1, s)
-            scaledH = (height * scale).roundToInt().coerceIn(1, s)
-            padX = (s - scaledW) / 2
-            padY = (s - scaledH) / 2
+            scale = min(inputW.toFloat() / width, inputH.toFloat() / height)
+            scaledW = (width * scale).roundToInt().coerceIn(1, inputW)
+            scaledH = (height * scale).roundToInt().coerceIn(1, inputH)
+            padX = (inputW - scaledW) / 2
+            padY = (inputH - scaledH) / 2
             // Same sample positions as cv2.resize(INTER_LINEAR): src = (dst + 0.5) / scale - 0.5
             val sx = FloatArray(scaledW) { (((it + 0.5f) / scale) - 0.5f).coerceIn(0f, (width - 1).toFloat()) }
             x0Lut = IntArray(scaledW) { sx[it].toInt() }
@@ -164,61 +215,83 @@ class YoloDetector private constructor(context: Context) {
             y0Lut = IntArray(scaledH) { sy[it].toInt() }
             y1Lut = IntArray(scaledH) { min(y0Lut[it] + 1, height - 1) }
             yWeight = FloatArray(scaledH) { sy[it] - y0Lut[it] }
-            rowA = FloatArray(scaledW * 3)
-            rowB = FloatArray(scaledW * 3)
+            rowCaches = Array(PREP_THREADS) { RowCache(scaledW) }
             inputArray.fill(PAD_VALUE)
             lastFrameW = width
             lastFrameH = height
         }
-        rowAIndex = -1
-        rowBIndex = -1
 
-        val plane = s * s
-        for (yy in 0 until scaledH) {
-            val top = resizedRow(pixels, y0Lut[yy], bpp, rowStride, keepRow = y1Lut[yy])
-            val bottom = resizedRow(pixels, y1Lut[yy], bpp, rowStride, keepRow = y0Lut[yy])
+        // Each worker fills its own band of output rows; bands share no memory, so no locking is needed.
+        val band = (scaledH + PREP_THREADS - 1) / PREP_THREADS
+        val jobs = (0 until PREP_THREADS).mapNotNull { w ->
+            val from = w * band
+            val to = min(scaledH, from + band)
+            if (from >= to) null
+            else Callable { fillRows(pixels, bpp, rowStride, from, to, rowCaches[w]) }
+        }
+        for (f in PREP_POOL.invokeAll(jobs)) f.get()
+    }
+
+    private fun fillRows(pixels: ByteArray, bpp: Int, rowStride: Int, from: Int, to: Int, cache: RowCache) {
+        cache.rowAIndex = -1
+        cache.rowBIndex = -1
+        val plane = inputW * inputH
+        val input = inputArray
+        for (yy in from until to) {
+            val top = resizedRow(pixels, y0Lut[yy], bpp, rowStride, keepRow = y1Lut[yy], cache = cache)
+            val bottom = resizedRow(pixels, y1Lut[yy], bpp, rowStride, keepRow = y0Lut[yy], cache = cache)
             val fy = yWeight[yy]
-            var dst = (padY + yy) * s + padX
+            var dst = (padY + yy) * inputW + padX
+            var i3 = 0
             for (xx in 0 until scaledW) {
-                val i3 = xx * 3
-                // cv2 keeps uint8 after resizing, so round before scaling to 0..1
-                val r = BYTE_TO_FLOAT[(top[i3] + (bottom[i3] - top[i3]) * fy + 0.5f).toInt().coerceIn(0, 255)]
-                val g = BYTE_TO_FLOAT[(top[i3 + 1] + (bottom[i3 + 1] - top[i3 + 1]) * fy + 0.5f).toInt().coerceIn(0, 255)]
-                val b = BYTE_TO_FLOAT[(top[i3 + 2] + (bottom[i3 + 2] - top[i3 + 2]) * fy + 0.5f).toInt().coerceIn(0, 255)]
+                // cv2 keeps uint8 after resizing, so round before scaling to 0..1 (values stay within 0..255)
+                val r = BYTE_TO_FLOAT[(top[i3] + (bottom[i3] - top[i3]) * fy + 0.5f).toInt()]
+                val g = BYTE_TO_FLOAT[(top[i3 + 1] + (bottom[i3 + 1] - top[i3 + 1]) * fy + 0.5f).toInt()]
+                val b = BYTE_TO_FLOAT[(top[i3 + 2] + (bottom[i3 + 2] - top[i3 + 2]) * fy + 0.5f).toInt()]
                 if (channelsFirst) {
-                    inputArray[dst] = r
-                    inputArray[plane + dst] = g
-                    inputArray[2 * plane + dst] = b
+                    input[dst] = r
+                    input[plane + dst] = g
+                    input[2 * plane + dst] = b
                 } else {
                     val i = dst * 3
-                    inputArray[i] = r
-                    inputArray[i + 1] = g
-                    inputArray[i + 2] = b
+                    input[i] = r
+                    input[i + 1] = g
+                    input[i + 2] = b
                 }
                 dst++
+                i3 += 3
             }
         }
     }
 
     /** One source row resized horizontally; two rows stay cached because consecutive output rows share them. */
-    private fun resizedRow(pixels: ByteArray, srcRow: Int, bpp: Int, rowStride: Int, keepRow: Int): FloatArray {
-        if (rowAIndex == srcRow) return rowA
-        if (rowBIndex == srcRow) return rowB
-        val useA = rowAIndex != keepRow
-        val out = if (useA) rowA else rowB
-        if (useA) rowAIndex = srcRow else rowBIndex = srcRow
+    private fun resizedRow(
+        pixels: ByteArray,
+        srcRow: Int,
+        bpp: Int,
+        rowStride: Int,
+        keepRow: Int,
+        cache: RowCache,
+    ): FloatArray {
+        if (cache.rowAIndex == srcRow) return cache.rowA
+        if (cache.rowBIndex == srcRow) return cache.rowB
+        val useA = cache.rowAIndex != keepRow
+        val out = if (useA) cache.rowA else cache.rowB
+        if (useA) cache.rowAIndex = srcRow else cache.rowBIndex = srcRow
 
         val rowStart = srcRow * rowStride
+        var i3 = 0
         for (xx in 0 until scaledW) {
             val p0 = rowStart + x0Lut[xx] * bpp
             val p1 = rowStart + x1Lut[xx] * bpp
             val fx = xWeight[xx]
-            val i3 = xx * 3
-            for (c in 0 until 3) {
-                val a = (pixels[p0 + c].toInt() and 0xFF).toFloat()
-                val b = (pixels[p1 + c].toInt() and 0xFF).toFloat()
-                out[i3 + c] = a + (b - a) * fx
-            }
+            val r0 = (pixels[p0].toInt() and 0xFF).toFloat()
+            val g0 = (pixels[p0 + 1].toInt() and 0xFF).toFloat()
+            val b0 = (pixels[p0 + 2].toInt() and 0xFF).toFloat()
+            out[i3] = r0 + ((pixels[p1].toInt() and 0xFF) - r0) * fx
+            out[i3 + 1] = g0 + ((pixels[p1 + 1].toInt() and 0xFF) - g0) * fx
+            out[i3 + 2] = b0 + ((pixels[p1 + 2].toInt() and 0xFF) - b0) * fx
+            i3 += 3
         }
         return out
     }
@@ -231,7 +304,9 @@ class YoloDetector private constructor(context: Context) {
         // Ultralytics TFLite exports normally give 0..1 coords; older ones give model pixels.
         var coordMax = 0f
         for (a in 0 until numAnchors) coordMax = max(coordMax, value(2, a))
-        val toPixels = if (coordMax <= 2f) inputSize.toFloat() else 1f
+        val normalized = coordMax <= 2f
+        val toPixelsX = if (normalized) inputW.toFloat() else 1f
+        val toPixelsY = if (normalized) inputH.toFloat() else 1f
 
         val candidates = ArrayList<FloatArray>() // [x0, y0, x1, y1, conf, class] in model pixels
         for (a in 0 until numAnchors) {
@@ -244,11 +319,11 @@ class YoloDetector private constructor(context: Context) {
                     best = c
                 }
             }
-            if (bestScore < CONFIDENCE_THRESHOLD) continue
-            val cx = value(0, a) * toPixels
-            val cy = value(1, a) * toPixels
-            val w = value(2, a) * toPixels
-            val h = value(3, a) * toPixels
+            if (bestScore < EVIDENCE_THRESHOLD) continue
+            val cx = value(0, a) * toPixelsX
+            val cy = value(1, a) * toPixelsY
+            val w = value(2, a) * toPixelsX
+            val h = value(3, a) * toPixelsY
             candidates.add(floatArrayOf(cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2, bestScore, best.toFloat()))
         }
         candidates.sortByDescending { it[4] }
@@ -280,28 +355,80 @@ class YoloDetector private constructor(context: Context) {
     companion object {
         private const val TAG = "YoloDetector"
         private const val MODEL_ASSET = "aviso-yolov8.tflite"
-        private const val CONFIDENCE_THRESHOLD = 0.25f // Ultralytics predict default (conf=0.25)
+        /** Which exported model is bundled in assets; shown on the camera screen. Update when the file changes. */
+        const val MODEL_VERSION = "v6-960x544-fp32"
+        /**
+         * Weakest detection passed to the app. Weak but steady objects still count as evidence for
+         * "possible" warnings; boxes are only drawn from [DRAW_THRESHOLD].
+         */
+        private const val EVIDENCE_THRESHOLD = 0.15f
+        /** Boxes drawn on the video, like Ultralytics predict's default (conf=0.25). */
+        const val DRAW_THRESHOLD = 0.25f
         private const val IOU_THRESHOLD = 0.7f // Ultralytics predict default (iou=0.7)
         private const val MAX_DETECTIONS = 100
         private const val PAD_VALUE = 114f / 255f
         private val BYTE_TO_FLOAT = FloatArray(256) { it / 255f }
 
+        /** Rows of the frame are shrunk on this many CPU cores in parallel. */
+        private const val PREP_THREADS = 4
+        private val PREP_POOL: ExecutorService = Executors.newFixedThreadPool(PREP_THREADS) { r ->
+            Thread(r, "yolo-prep").apply { isDaemon = true }
+        }
+
+        /** The only thread that creates and runs the model (GPU delegates must stay on one thread). */
+        private val DETECTOR_THREAD: ExecutorService = Executors.newSingleThreadExecutor { r ->
+            Thread(r, "yolo-detector").apply { isDaemon = true }
+        }
+
+        enum class Status { IDLE, LOADING, READY, FAILED }
+
+        @Volatile
+        var status = Status.IDLE
+            private set
+
+        @Volatile
+        var failureMessage: String? = null
+            private set
+
         @Volatile
         private var instance: YoloDetector? = null
 
-        /** Loads the model on first use (slow: do not call on the UI thread). */
-        fun get(context: Context): YoloDetector =
-            instance ?: synchronized(this) {
-                instance ?: YoloDetector(context.applicationContext).also { instance = it }
-            }
-
-        private fun loadModel(context: Context): ByteBuffer {
-            val bytes = context.assets.open(MODEL_ASSET).use { it.readBytes() }
-            return ByteBuffer.allocateDirect(bytes.size).order(ByteOrder.nativeOrder()).apply {
-                put(bytes)
-                rewind()
+        private fun <T> onDetectorThread(block: () -> T): T {
+            try {
+                return DETECTOR_THREAD.submit(Callable { block() }).get()
+            } catch (e: ExecutionException) {
+                throw e.cause ?: e
             }
         }
+
+        /** Must run on DETECTOR_THREAD. */
+        private fun loadNow(context: Context): YoloDetector {
+            instance?.let { return it }
+            status = Status.LOADING
+            return try {
+                YoloDetector(context.applicationContext).also {
+                    instance = it
+                    status = Status.READY
+                }
+            } catch (e: Throwable) {
+                failureMessage = e.message ?: e.javaClass.simpleName
+                status = Status.FAILED
+                throw e
+            }
+        }
+
+        /**
+         * Returns the loaded model, loading it first if needed (slow: never call on the UI thread).
+         * Blocks until the detector thread has it ready.
+         */
+        fun get(context: Context): YoloDetector = instance ?: onDetectorThread { loadNow(context) }
+
+        /**
+         * Starts loading in the background (e.g. when the camera tab opens) so the first frame doesn't wait.
+         * The future completes when the model is ready, or fails with the load error.
+         */
+        fun prepare(context: Context): Future<YoloDetector> =
+            DETECTOR_THREAD.submit(Callable { loadNow(context) })
 
         /** Serializes detections, mapping frame coords into a sub-rectangle of the view (all values 0..1). */
         fun toJson(
