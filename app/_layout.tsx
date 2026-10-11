@@ -1,5 +1,5 @@
 import "../global.css";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import {
     DarkTheme,
     DefaultTheme,
@@ -22,6 +22,9 @@ import { useNetworkStatus } from "@/hooks/use-network-status";
 import { initDb } from "@/lib/local-db";
 import { startSyncInterval, pullFromBackend } from "@/lib/sync-service";
 import { OfflineBanner } from "@/components/OfflineBanner";
+import { UpdateBanner } from "@/components/UpdateBanner";
+import { useAppUpdates } from "@/hooks/use-app-updates";
+import { useRideActive } from "@/lib/ride-state";
 import { ThemePreferenceProvider } from "@/contexts/theme-context";
 
 SplashScreen.preventAutoHideAsync();
@@ -70,6 +73,9 @@ export default function RootLayout() {
 function RootLayoutNav() {
     const colorScheme = useColorScheme();
     const { isOnline } = useNetworkStatus();
+    const { status: updateStatus, restart } = useAppUpdates();
+    const rideActive = useRideActive();
+    const [updateLater, setUpdateLater] = useState(false);
 
     return (
         <ThemeProvider
@@ -78,6 +84,10 @@ function RootLayoutNav() {
             <Stack screenOptions={{ headerShown: false }} />
             <StatusBar style={colorScheme === "dark" ? "light" : "dark"} />
             <OfflineBanner isVisible={!isOnline} />
+            {/* Never restart during a ride: the banner waits until End Ride. "Later" applies it on the next app start. */}
+            {updateStatus === "ready" && !rideActive && !updateLater && (
+                <UpdateBanner onRestart={restart} onLater={() => setUpdateLater(true)} />
+            )}
             <Toast />
         </ThemeProvider>
     );

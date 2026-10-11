@@ -1,8 +1,8 @@
 {
   "expo": {
-    "name": "aviso-mobile",
+    "name": "AVISO",
     "slug": "aviso-mobile",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "orientation": "portrait",
     "icon": "./assets/images/aviso-logo-android/play_store_512.png",
     "scheme": "avisomobile",
@@ -116,6 +116,14 @@
         "projectId": "29bc57a7-8dd4-4bf4-aa49-bfd537dde12c"
       }
     },
-    "owner": "nexsmoshi"
+    "owner": "nexsmoshi",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/29bc57a7-8dd4-4bf4-aa49-bfd537dde12c",
+      "checkAutomatically": "NEVER",
+      "fallbackToCacheTimeout": 0
+    }
   }
 }

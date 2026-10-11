@@ -6,6 +6,7 @@ import { SOS_TEXT, SOS_CACHE_KEY } from '@/constants/sos';
 import { PermissionsGate } from '@/components/PermissionsGate';
 import { TripProvider, useTripContext } from '@/contexts/trip-context';
 import { IotProvider, useIot } from '@/contexts/iot-context';
+import { setRideActive } from '@/lib/ride-state';
 
 function RiderStack() {
   const { isActive } = useTripContext();
@@ -15,6 +16,12 @@ function RiderStack() {
   // phone's own sensors are only the fallback, so a dropped phone can't
   // trigger an SOS while the unit is watching the bike.
   useCrashDetection(isActive && !iotConnected);
+
+  // Lets the app-update banner (root layout) wait until the ride has ended.
+  useEffect(() => {
+    setRideActive(isActive);
+    return () => setRideActive(false);
+  }, [isActive]);
 
   useEffect(() => {
     generateJarvisAudio(SOS_TEXT, SOS_CACHE_KEY).catch(() => {});
