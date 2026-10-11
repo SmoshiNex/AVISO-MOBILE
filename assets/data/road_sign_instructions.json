@@ -1,22 +1,22 @@
 {
   "children_crossing": {
     "name": "Children Crossing",
-    "popup": "Children crossing ahead",
-    "voice": "Children crossing ahead. Slow down."
+    "popup": "Children crossing",
+    "voice": "Children crossing."
   },
   "no_left_turn": {
     "name": "No Left Turn",
     "popup": "No left turn",
-    "voice": "No left turn ahead."
+    "voice": "No left turn."
   },
   "no_parking": {
     "name": "No Parking",
-    "popup": "No parking zone",
-    "voice": "No parking zone."
+    "popup": "No parking",
+    "voice": "No parking."
   },
   "other": {
     "name": "Traffic Sign",
-    "popup": "Traffic sign ahead",
+    "popup": "Traffic sign",
     "voice": null
   },
   "slow_down": {
@@ -26,7 +26,7 @@
   },
   "speed_limit_20": {
     "name": "Speed Limit 20",
-    "popup": "Speed limit 20 km/h",
-    "voice": "Speed limit 20 kilometers per hour. Slow down."
+    "popup": "Speed limit 20",
+    "voice": "Speed limit 20."
   }
 }

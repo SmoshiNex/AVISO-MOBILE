@@ -28,8 +28,8 @@ import { useThemeColor } from "@/hooks/use-theme-color";
 import { useTripContext } from "@/contexts/trip-context";
 import { classify } from "@/lib/detection-classifier";
 import { announce, stopAllSpeech } from "@/lib/voice-queue";
-import { AlertGate, alertKey, type Alert, type HazardSave } from "@/lib/alert-gate";
-import { DISPLAY_MIN_CONFIDENCE } from "@/constants/detection-tuning";
+import { AlertGate, type Alert, type HazardSave } from "@/lib/alert-gate";
+import { DISPLAY_MIN_CONFIDENCE, groupName } from "@/constants/detection-tuning";
 import { useArHeading } from "@/hooks/use-ar-heading";
 import { AlertCard } from "@/components/ar/AlertCard";
 import { CompassArrow } from "@/components/ar/CompassArrow";
@@ -52,15 +52,14 @@ const SOURCE_OPTIONS: { mode: SourceMode; label: string; icon: keyof typeof Ioni
 
 // Decides when an object deserves a popup + voice (once per encounter).
 const alertGate = new AlertGate();
-const ALERT_CARD_MS = 4000;
-// Sign/light popups follow their object: shown at least this long, at most
-// this long, and closed this long after the object leaves the video.
+// Popups follow their object: shown at least this long, at most this long,
+// and closed this long after the object leaves the video.
 const FOLLOW_MIN_MS = 2500;
 const FOLLOW_MAX_MS = 8000;
 const FOLLOW_LOST_CLOSE_MS = 700;
 
 type BBox = DetectionResult["bbox"];
-type TrackedAlert = { key: string; bbox: BBox; lastSeenAt: number; shownAt: number };
+type TrackedAlert = { key: string; follow: readonly string[]; bbox: BBox; lastSeenAt: number; shownAt: number };
 
 const centerDistance = (a: BBox, b: BBox) =>
     Math.hypot(a.x + a.w / 2 - (b.x + b.w / 2), a.y + a.h / 2 - (b.y + b.h / 2));
@@ -100,7 +99,7 @@ export default function CameraScreen() {
     const { trip, isActive, startTrip, endTrip } = useTripContext();
     const insets = useSafeAreaInsets();
     // World-locked arrow direction + rider GPS, live for the whole ride.
-    const { angleRef, angle, visibility, positionRef, compassRef } = useArHeading(isActive);
+    const { angleRef, angle, visibility, positionRef, speedKmhRef, compassRef } = useArHeading(isActive);
     const alertTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     const detectionClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
         null,
@@ -203,37 +202,33 @@ export default function CameraScreen() {
             // Popup + voice: at most one alert, and only for objects that are
             // new — not on every frame the object stays in view.
             const now = Date.now();
-            const { alert, saves } = alertGate.process(results, now, positionRef.current);
+            const { alert, saves } = alertGate.process(results, now, positionRef.current, speedKmhRef.current);
             // Weak detections (below the display threshold) only count as evidence for the gate.
             const shown = results.filter((r) => r.confidence >= DISPLAY_MIN_CONFIDENCE);
             if (alert) {
                 setActiveAlert({ alert, id: now });
                 if (alertTimer.current) clearTimeout(alertTimer.current);
-                if (alert.kind === "road") {
-                    // Road hazards: fixed informational card.
+                // Every popup (hazard, sign, light) follows its object in the video (AR),
+                // shown for at least FOLLOW_MIN_MS and at most FOLLOW_MAX_MS.
+                trackRef.current = {
+                    key: alert.key,
+                    follow: alert.follow,
+                    bbox: alert.detection.bbox,
+                    lastSeenAt: now,
+                    shownAt: now,
+                };
+                setTrackedBbox(alert.detection.bbox);
+                alertTimer.current = setTimeout(() => {
                     trackRef.current = null;
-                    setTrackedBbox(undefined);
-                    alertTimer.current = setTimeout(() => setActiveAlert(null), ALERT_CARD_MS);
-                } else {
-                    // Signs/lights: the card follows the object (capped in time).
-                    trackRef.current = {
-                        key: alert.key,
-                        bbox: alert.detection.bbox,
-                        lastSeenAt: now,
-                        shownAt: now,
-                    };
-                    setTrackedBbox(alert.detection.bbox);
-                    alertTimer.current = setTimeout(() => {
-                        trackRef.current = null;
-                        setActiveAlert(null);
-                    }, FOLLOW_MAX_MS);
-                }
-                if (alert.voice) announce(alert.voice, alert.priority);
+                    setActiveAlert(null);
+                }, FOLLOW_MAX_MS);
+                if (alert.voice) announce(alert.voice, alert.priority, alert.urgent);
             } else if (trackRef.current) {
                 const track = trackRef.current;
                 let best: DetectionResult | null = null;
                 for (const d of shown) {
-                    if (alertKey(d) !== track.key) continue;
+                    // Follow the nearest member of the alerted object/zone (e.g. the closest barrier in a row).
+                    if (!track.follow.includes(groupName(d))) continue;
                     if (!best || centerDistance(d.bbox, track.bbox) < centerDistance(best.bbox, track.bbox)) best = d;
                 }
                 if (best) {
@@ -252,8 +247,8 @@ export default function CameraScreen() {
                 }
             }
 
-            // Road hazards whose encounter ended after meeting the strict save rule:
-            // one save per encounter, from its closest sighting.
+            // Road hazards whose pass ended with a detection at the save level:
+            // one save per pass, from its strongest sighting.
             for (const save of saves) void saveHazard(save);
 
             if (shown.length > 0) {
@@ -270,7 +265,7 @@ export default function CameraScreen() {
                 }, 1500);
             }
         },
-        [isActive, positionRef, saveHazard],
+        [isActive, positionRef, speedKmhRef, saveHazard],
     );
 
     useEffect(() => {
@@ -535,7 +530,7 @@ export default function CameraScreen() {
                     key={activeAlert.id}
                     alert={activeAlert.alert}
                     top={insets.top + 56}
-                    trackedBbox={activeAlert.alert.kind === "road" ? undefined : trackedBbox}
+                    trackedBbox={trackedBbox}
                 />
             )}
 

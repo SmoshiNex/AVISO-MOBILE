@@ -29,21 +29,21 @@ export const HAZARD_COLORS: Record<string, string> = {
 };
 
 export const HAZARD_WARNINGS: Record<string, string> = {
-  'Pothole': 'Pothole ahead — reduce speed',
-  'Road Excavation': 'Road excavation ahead — proceed with caution',
-  'Road Barrier': 'Road barrier ahead — reduce speed',
-  'Traffic Sign': 'Traffic sign ahead',
+  'Pothole': 'Pothole',
+  'Road Excavation': 'Roadwork',
+  'Road Barrier': 'Barrier',
+  'Traffic Sign': 'Traffic sign',
   'Traffic Light Red': 'Red light — stop',
-  'Traffic Light Yellow': 'Yellow light — prepare to stop',
-  'Traffic Light Green': 'Green light — proceed safely',
+  'Traffic Light Yellow': 'Yellow — prepare to stop',
+  'Traffic Light Green': 'Green light',
 };
 
 // Spoken text for lights (road hazards use their distance; signs use
 // road_sign_instructions.json).
 export const LIGHT_VOICE: Record<string, string> = {
-  'Traffic Light Red': 'Red light. Stop.',
-  'Traffic Light Yellow': 'Yellow light. Prepare to stop.',
-  'Traffic Light Green': 'Green light. Proceed with caution.',
+  'Traffic Light Red': 'Red light, stop.',
+  'Traffic Light Yellow': 'Yellow, prepare to stop.',
+  'Traffic Light Green': 'Green light.',
 };
 
 // Real-world widths in cm — used for distance estimation (hazard classes only)

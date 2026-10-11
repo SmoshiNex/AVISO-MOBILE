@@ -26,8 +26,9 @@ type AlertCardProps = {
   /** Distance of the card's top edge from the top of the screen (fixed card),
    *  and the highest a following card may go (below the HUD). */
   top: number;
-  /** Signs/lights: the object's latest box, so the card follows it in the
-   *  video; null = the object left the view (card stays, dimmed). */
+  /** The object's latest box, so the card follows it in the video (every
+   *  kind: hazards, signs, lights); null = the object left the view (card
+   *  stays, dimmed). Undefined falls back to the fixed card. */
   trackedBbox?: BBox | null;
 };
 
@@ -48,7 +49,7 @@ const ACCENT: Record<Alert['kind'], string> = {
  * camera screen's timer) plays the fade-out.
  */
 export function AlertCard({ alert, top, trackedBbox }: AlertCardProps) {
-  if (alert.kind !== 'road' && trackedBbox !== undefined) {
+  if (trackedBbox !== undefined) {
     return <AnchoredAlertCard alert={alert} minTop={top} bbox={trackedBbox ?? alert.detection.bbox} lost={trackedBbox === null} />;
   }
   return <FixedAlertCard alert={alert} top={top} />;
@@ -72,7 +73,7 @@ function usePulse() {
 type AnchoredProps = { alert: Alert; minTop: number; bbox: BBox; lost: boolean };
 
 /**
- * Pokémon-GO-style popup: floats just above the detected sign/light and
+ * Pokémon-GO-style popup: floats just above the detected hazard/sign/light and
  * glides with it as it moves and grows in the video (below it when the
  * object is near the top). Only transform/opacity animate, on the UI thread.
  */
@@ -144,6 +145,11 @@ function AnchoredAlertCard({ alert, minTop, bbox, lost }: AnchoredProps) {
             <Text style={styles.title} numberOfLines={2}>
               {alert.popup}
             </Text>
+            {alert.detection.distance !== undefined && (
+              <Text style={styles.subtitle}>
+                {DISTANCE_WORD_LABEL[distanceWord(alert.detection.distance)]}
+              </Text>
+            )}
           </View>
         </View>
         {above && (

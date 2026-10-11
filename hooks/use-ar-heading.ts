@@ -35,6 +35,8 @@ export type ArHeading = {
   visibility: SharedValue<number>;
   /** Latest GPS fix, for alerts that depend on distance travelled. */
   positionRef: React.MutableRefObject<LatLng | null>;
+  /** Latest GPS speed in km/h, or null when unknown (alerts are stricter when stopped). */
+  speedKmhRef: React.MutableRefObject<number | null>;
   /** Compass bearing of the camera (0 = north, degrees), null until known. */
   compassRef: React.MutableRefObject<number | null>;
 };
@@ -60,6 +62,7 @@ export function useArHeading(active: boolean): ArHeading {
   const angle = useSharedValue(0);
   const visibility = useSharedValue(0);
   const positionRef = useRef<LatLng | null>(null);
+  const speedKmhRef = useRef<number | null>(null);
   const compassRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -156,6 +159,7 @@ export function useArHeading(active: boolean): ArHeading {
       { accuracy: Location.Accuracy.BestForNavigation, timeInterval: 1000, distanceInterval: 1 },
       ({ coords, timestamp }) => {
         positionRef.current = { latitude: coords.latitude, longitude: coords.longitude };
+        speedKmhRef.current = coords.speed != null && coords.speed >= 0 ? coords.speed * 3.6 : null;
         moving = (coords.speed ?? 0) >= MOVING_SPEED_MS;
         const course = coords.heading;
         if (moving && course !== null && course >= 0) {
@@ -206,5 +210,5 @@ export function useArHeading(active: boolean): ArHeading {
     };
   }, [active, angle, visibility]);
 
-  return { angleRef, angle, visibility, positionRef, compassRef };
+  return { angleRef, angle, visibility, positionRef, speedKmhRef, compassRef };
 }

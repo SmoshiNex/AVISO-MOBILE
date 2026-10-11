@@ -30,12 +30,13 @@
     "android": {
       "package": "com.nexsmoshi.avisomobile",
       "permissions": [
-        "ACCESS_FINE_LOCATION",
-        "ACCESS_COARSE_LOCATION",
-        "CAMERA",
-        "READ_CONTACTS",
-        "READ_MEDIA_IMAGES",
-        "SEND_SMS"
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.CAMERA",
+        "android.permission.READ_CONTACTS",
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.SEND_SMS",
+        "android.permission.RECORD_AUDIO"
       ],
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/aviso-logo-android/res/mipmap-xxxhdpi/ic_launcher_foreground.png",
@@ -54,7 +55,7 @@
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/splash-icon.png",
+          "image": "./assets/images/aviso-logo-android/play_store_512.png",
           "imageWidth": 200,
           "resizeMode": "contain",
           "backgroundColor": "#ffffff",
@@ -96,7 +97,9 @@
           "android": {
             "usesCleartextTraffic": true,
             "packagingOptions": {
-              "pickFirst": ["**/libc++_shared.so"]
+              "pickFirst": [
+                "**/libc++_shared.so"
+              ]
             }
           }
         }
@@ -106,6 +109,13 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "29bc57a7-8dd4-4bf4-aa49-bfd537dde12c"
+      }
+    },
+    "owner": "nexsmoshi"
   }
 }

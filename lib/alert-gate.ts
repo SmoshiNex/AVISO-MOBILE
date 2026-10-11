@@ -1,68 +1,50 @@
-import {
-  HAZARD_WARNINGS,
-  LIGHT_VOICE,
-  isTrafficLight,
-} from '@/constants/hazards';
+import { HAZARD_WARNINGS, LIGHT_VOICE, isTrafficLight } from '@/constants/hazards';
 import { VOICE_ALERT_PRIORITY, DEFAULT_VOICE_PRIORITY } from '@/constants/detections';
 import {
-  CONFIRM_FAST_SIGHTINGS,
-  CONFIRM_SPAN_MS,
-  CONFIRM_WINDOW_MS,
-  FAR_THRESHOLD_DROP,
-  FAST_PATH_CONFIDENCE,
+  CLUSTER_COUNT,
+  CLUSTER_WINDOW_MS,
+  COOLDOWN_MS,
   GONE_MS,
-  LARGE_BOX_H,
   POPUP_SPACING_MS,
-  POSSIBLE_MIN_MS,
-  POSSIBLE_SIGHTINGS,
+  POTHOLE_MATCH_BOX_FACTOR,
+  POTHOLE_MATCH_MAX_RISE,
+  POTHOLE_MATCH_MIN,
+  POTHOLE_PASSED_MS,
   RELATED_GROUPS,
   RELATED_MERGE_OVERLAP,
-  SAVE_MIN_SIGHTINGS,
-  SAVE_MIN_SMOOTHED,
-  SIGHTINGS_CLOSE,
-  SIGHTINGS_FAR,
+  ROAD_MIN_CENTER_Y,
+  SAVE_MIN_CONFIDENCE,
+  SIGHTING_WINDOW_MS,
+  SLOW_SIGHTINGS,
+  SLOW_SPEED_KMH,
+  SMALL_BOX_EXTRA,
   SMALL_BOX_H,
-  SMOOTHING_TAU_MS,
-  STEADY_CENTER_SHIFT,
-  STEADY_IOU,
+  ZONE_END_MS,
   classTuning,
   groupName,
 } from '@/constants/detection-tuning';
 import roadSigns from '@/assets/data/road_sign_instructions.json';
-import { distanceWord, type DistanceWord } from '@/lib/distance-estimator';
+import { distanceWord } from '@/lib/distance-estimator';
 import type { DetectionResult } from '@/types';
 
-const HAZARD_VOICE: Record<DistanceWord, (type: string) => string> = {
-  near: (type) => `${type} near. Slow down.`,
-  ahead: (type) => `${type} ahead.`,
-  far: (type) => `${type} far ahead.`,
-};
-
 /**
- * Decides when a detected object deserves a popup + voice alert, and when a road hazard is
- * confident enough to be saved to Hazard Logs.
+ * Decides when detected objects deserve a popup + voice alert, and which road hazards are saved.
  *
- * YOLO reports the same object on every frame and its confidence jumps between frames, so a
- * per-frame threshold is both late and noisy. Instead, each object keeps a smoothed confidence
- * (time-weighted, so it behaves the same at any FPS) and the bar it must clear adapts:
- *  - per class (weak classes like pothole get a lower bar),
- *  - per distance (small, far boxes pass with a lower bar but need more sightings),
- *  - a very confident frame takes a fast path,
- *  - weak but steady objects (same place, frame after frame) get a softer "possible" warning
- *    without voice, upgraded to a normal warning if confidence rises,
- *  - related classes overlapping one object (excavation + other sign) are merged.
- * Once warned, an object stays warned for the whole encounter (until gone for GONE_MS), and
- * cooldowns stop the same sign/hazard repeating. Saving uses a stricter, separate rule.
+ * Triggers: ONE detection is enough while moving (the detector checks only ~6–7 frames per
+ * second, so an object is often detected once); two when stopped/crawling. False alarms are
+ * filtered by per-class levels, on-road position and box size. A detection at the class level
+ * gives a normal popup + voice; the lower band gives a "possible" popup without voice.
+ *
+ * Grouping (what counts as "the same thing", so it's warned once per pass):
+ *  - potholes: each pothole is its own object, followed in the video; passed after 1 s unseen,
+ *  - road barriers: a row (one or both sides) is ONE barrier zone, ending after 3 s unseen,
+ *  - excavation + barriers + road-work signs at one site: ONE road-work zone,
+ *  - signs: per sign type; traffic lights: one group (a colour change warns again).
+ * Short cooldowns between different objects of a kind (3 s hazards, 10 s per sign type, 5 s
+ * lights). 3+ potholes in 10 s: one spoken "Rough road, slow down." and silent cards after.
+ * Saving: one save per pothole / zone, from its strongest detection at the save level.
  * All values live in constants/detection-tuning.ts.
  */
-
-const ROAD_HAZARD_COOLDOWN_MS = 15_000;
-const SIGN_COOLDOWN_MS = 60_000;
-const SIGN_MIN_DISTANCE_M = 100;
-const LIGHT_COOLDOWN_MS = 10_000;
-const LIGHT_COLOR_CHANGE_GAP_MS = 3000;
-
-const LIGHT_KEY = 'traffic-light';
 
 type SignInfo = { name: string; popup: string; voice: string | null };
 const SIGNS = roadSigns as Record<string, SignInfo>;
@@ -71,22 +53,30 @@ export type LatLng = { latitude: number; longitude: number };
 
 export type AlertKind = 'road' | 'sign' | 'light';
 
-/** "normal" = popup + voice; "possible" = softer popup, no voice (weak but steady object). */
+/** "normal" = popup + voice; "possible" = softer popup, no voice (lower-confidence detection). */
 export type AlertTier = 'normal' | 'possible';
+
+/** What an alert is about: one pothole, a barrier zone, a road-work zone, a sign type, or the lights. */
+type GroupKind = 'pothole' | 'barrierZone' | 'roadworkZone' | 'sign' | 'light';
 
 export type Alert = {
   key: string;
   kind: AlertKind;
   tier: AlertTier;
+  /** The nearest object of the group: the card follows it. */
   detection: DetectionResult;
   priority: number;
+  /** Spoken first, and may cut into other speech (red light, children crossing, near hazard). */
+  urgent: boolean;
   /** Short text for the popup card. */
   popup: string;
-  /** Spoken text, or null for popup-only alerts (unknown signs, "possible" warnings). */
+  /** Spoken text, or null for card-only alerts ("possible", unknown signs, rest of a cluster). */
   voice: string | null;
+  /** Classes (groupName) the card may follow in later frames. */
+  follow: readonly string[];
 };
 
-/** A road hazard encounter that met the save rule; detection = its closest (largest) sighting. */
+/** A road hazard object/zone that ended with a detection at the save level; its strongest one. */
 export type HazardSave = {
   detection: DetectionResult;
   position: LatLng | null;
@@ -96,74 +86,45 @@ export type HazardSave = {
 export type GateResult = { alert: Alert | null; saves: HazardSave[] };
 
 type BBox = DetectionResult['bbox'];
+type Evidence = { detection: DetectionResult; raw: number };
 
-type KeyState = {
-  /** Sighting times within CONFIRM_WINDOW_MS. */
+type GroupState = {
+  kind: GroupKind;
+  /** Cooldown bucket: same for all potholes, all barrier zones, one per sign type... */
+  cooldownKey: string;
+  /** Detection times within SIGHTING_WINDOW_MS (slow-speed rule). */
   hits: number[];
   lastSeenAt: number;
+  /** Nearest member seen last frame (card follows it; pothole matching uses its box). */
   latest: DetectionResult;
-  /** Trend of the merged confidence: evidence for "possible" warnings only. */
-  smoothed: number;
-  /**
-   * Trend of the class's own confidence: used for normal warnings and saving, so merging two weak
-   * classes can never produce a voiced warning or a saved hazard on its own.
-   */
-  rawSmoothed: number;
-  /** The class's own confidence in the latest frame (fast path). */
-  latestRaw: number;
-  lastBox: BBox | null;
-  /** Consecutive sightings in about the same place, and when that run started. */
-  steadyCount: number;
-  steadySince: number;
-
   inEncounter: boolean;
-  /** Cooldown decided this encounter shows no popup. */
+  /** Cooldown decided this object/zone shows no popup. */
   blocked: boolean;
-  /** Highest tier already shown this encounter. */
   alertedTier: AlertTier | null;
-  lastAlertAt: number;
-  lastAlertPos: LatLng | null;
-  /** Lights only: colour (type) last alerted. */
-  alertedType: string | null;
-
-  /** Road hazards: met the save rule this encounter, and its closest sighting so far. */
-  saveEligible: boolean;
+  /** Highest tier detected; kept while in view, so a single detection still gets its popup. */
+  pendingTier: AlertTier | null;
+  /** Strongest road-hazard detection at the save level (one save per object/zone). */
   best: HazardSave | null;
+  bestRaw: number;
 };
 
-/** Identity of an object across frames (all traffic lights share one key). */
-export function alertKey(d: DetectionResult): string {
-  if (isTrafficLight(d.type)) return LIGHT_KEY;
-  if (d.signKey) return `sign:${d.signKey}`;
-  return d.type;
-}
+const ROAD_WORK_MEMBERS = ['Road Excavation', 'Road Barrier', 'sign:other'] as const;
+const BARRIER_MEMBERS = ['Road Barrier', 'sign:other'] as const;
+const LIGHT_MEMBERS = ['Traffic Light Red', 'Traffic Light Yellow', 'Traffic Light Green'] as const;
+const LIGHT_KEY = 'traffic-light';
+const TIER_RANK: Record<AlertTier, number> = { possible: 1, normal: 2 };
 
-function kindOf(d: DetectionResult): AlertKind {
-  if (isTrafficLight(d.type)) return 'light';
-  if (d.signKey) return 'sign';
-  return 'road';
-}
+/** Pothole cluster voice; later pothole cards in the cluster are silent. */
+const CLUSTER_VOICE = 'Rough road, slow down.';
 
-function metersBetween(a: LatLng, b: LatLng): number {
-  const R = 6_371_000;
-  const toRad = (deg: number) => (deg * Math.PI) / 180;
-  const dLat = toRad(b.latitude - a.latitude);
-  const dLng = toRad(b.longitude - a.longitude);
-  const h =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRad(a.latitude)) * Math.cos(toRad(b.latitude)) * Math.sin(dLng / 2) ** 2;
-  return 2 * R * Math.asin(Math.sqrt(h));
-}
+const ZONE_NAME: Record<'pothole' | 'barrierZone' | 'roadworkZone', string> = {
+  pothole: 'Pothole',
+  barrierZone: 'Barrier',
+  roadworkZone: 'Roadwork',
+};
 
-function iou(a: BBox, b: BBox): number {
-  const iw = Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x));
-  const ih = Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
-  const inter = iw * ih;
-  const union = a.w * a.h + b.w * b.h - inter;
-  return union <= 0 ? 0 : inter / union;
-}
+const isRoadType = (type: string) => type === 'Pothole' || type === 'Road Excavation' || type === 'Road Barrier';
 
-/** Share of the smaller box covered by the other: 1 when a small box sits inside a big one. */
 function overlapOfSmaller(a: BBox, b: BBox): number {
   const iw = Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x));
   const ih = Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
@@ -171,25 +132,18 @@ function overlapOfSmaller(a: BBox, b: BBox): number {
   return smaller <= 0 ? 0 : (iw * ih) / smaller;
 }
 
-function isSteady(prev: BBox, next: BBox): boolean {
-  if (iou(prev, next) >= STEADY_IOU) return true;
-  const shift = Math.hypot(
-    prev.x + prev.w / 2 - (next.x + next.w / 2),
-    prev.y + prev.h / 2 - (next.y + next.h / 2),
-  );
-  return shift <= STEADY_CENTER_SHIFT;
-}
+const centerOf = (b: BBox) => ({ x: b.x + b.w / 2, y: b.y + b.h / 2 });
+const area = (b: BBox) => b.w * b.h;
 
-/** 0 for a small (far) box, 1 for a large (close) one, linear in between. */
-function closeness(bbox: BBox): number {
-  return Math.min(1, Math.max(0, (bbox.h - SMALL_BOX_H) / (LARGE_BOX_H - SMALL_BOX_H)));
+/** A detection in a place its class can't be: a pothole/excavation in the sky. */
+function plausible(d: DetectionResult): boolean {
+  if (!classTuning(d).onRoad) return true;
+  return d.bbox.y + d.bbox.h / 2 >= ROAD_MIN_CENTER_Y;
 }
-
-type Evidence = { detection: DetectionResult; raw: number };
 
 /**
  * Merges overlapping boxes of related classes into one object: the stronger class wins and the
- * confidences combine (1 - (1-a)(1-b)), since both are evidence of the same object.
+ * confidences combine (1 - (1-a)(1-b)); the class's own confidence is kept as `raw`.
  */
 function mergeRelated(results: DetectionResult[]): Evidence[] {
   const sorted = [...results].sort((a, b) => b.confidence - a.confidence);
@@ -199,7 +153,6 @@ function mergeRelated(results: DetectionResult[]): Evidence[] {
     const target = group
       ? kept.find(
           (k) =>
-            k.detection !== d &&
             group.includes(groupName(k.detection)) &&
             overlapOfSmaller(k.detection.bbox, d.bbox) >= RELATED_MERGE_OVERLAP,
         )
@@ -214,227 +167,286 @@ function mergeRelated(results: DetectionResult[]): Evidence[] {
   return kept;
 }
 
-function possibleLabel(d: DetectionResult): string {
-  if (d.signKey) return SIGNS[d.signKey]?.name?.toLowerCase() ?? 'traffic sign';
-  if (isTrafficLight(d.type)) return `${d.type.replace('Traffic Light ', '').toLowerCase()} traffic light`;
-  return d.type.toLowerCase();
+/** Tier one detection supports on its own (class level, tiny-box extra). */
+function evidenceTier({ detection: d, raw }: Evidence): AlertTier | null {
+  const tuning = classTuning(d);
+  const extra = d.bbox.h < SMALL_BOX_H ? SMALL_BOX_EXTRA : 0;
+  // Normal uses the class's own confidence; merged evidence only helps the "possible" tier.
+  if (raw >= tuning.normal + extra) return 'normal';
+  if (d.confidence >= tuning.possible + extra) return 'possible';
+  return null;
 }
 
-function buildAlert(key: string, d: DetectionResult, tier: AlertTier): Alert {
-  const kind = kindOf(d);
-  // Lights are ranked by colour, signs and hazards by their own key.
-  const priorityKey = kind === 'light' ? d.type : key;
-  const priority = VOICE_ALERT_PRIORITY[priorityKey] ?? DEFAULT_VOICE_PRIORITY;
+function goneAfter(kind: GroupKind): number {
+  if (kind === 'pothole') return POTHOLE_PASSED_MS;
+  if (kind === 'barrierZone' || kind === 'roadworkZone') return ZONE_END_MS;
+  return GONE_MS;
+}
 
-  if (tier === 'possible') {
-    return { key, kind, tier, detection: d, priority, popup: `Possible ${possibleLabel(d)} ahead`, voice: null };
-  }
+function buildAlert(key: string, st: GroupState, tier: AlertTier, d: DetectionResult): Alert {
+  const signKey = d.signKey;
+  const groupPriorityKey =
+    st.kind === 'light' ? d.type : st.kind === 'sign' ? `sign:${signKey ?? 'other'}` : 'Pothole';
+  const priority = VOICE_ALERT_PRIORITY[groupPriorityKey] ?? DEFAULT_VOICE_PRIORITY;
 
-  if (kind === 'sign') {
-    const sign = d.signKey ? SIGNS[d.signKey] : undefined;
+  if (st.kind === 'pothole' || st.kind === 'barrierZone' || st.kind === 'roadworkZone') {
+    const name = ZONE_NAME[st.kind];
+    const near = d.distance !== undefined && distanceWord(d.distance) === 'near';
+    const follow =
+      st.kind === 'pothole' ? ['Pothole'] : st.kind === 'barrierZone' ? [...BARRIER_MEMBERS] : [...ROAD_WORK_MEMBERS];
+    // Card shows the roadwork icon even when the nearest member is a barrier or sign.
+    const shown = st.kind === 'roadworkZone' ? { ...d, type: 'Road Excavation', signKey: undefined } : d;
     return {
-      key, kind, tier, detection: d, priority,
-      popup: sign?.popup ?? 'Traffic sign ahead',
-      voice: sign?.voice ?? null,
+      key, kind: 'road', tier, detection: shown, priority, follow,
+      urgent: tier === 'normal' && near,
+      popup: tier === 'possible' ? `Possible ${name.toLowerCase()}` : name,
+      voice: tier === 'possible' ? null : near ? `${name}, slow down.` : `${name} ahead.`,
     };
   }
 
-  if (kind === 'light') {
+  if (st.kind === 'light') {
+    const color = d.type.replace('Traffic Light ', '').toLowerCase();
     return {
-      key, kind, tier, detection: d, priority,
-      popup: HAZARD_WARNINGS[d.type] ?? d.type,
-      voice: LIGHT_VOICE[d.type] ?? null,
+      key, kind: 'light', tier, detection: d, priority, follow: [...LIGHT_MEMBERS],
+      urgent: tier === 'normal' && d.type === 'Traffic Light Red',
+      popup: tier === 'possible' ? `Possible ${color} light` : HAZARD_WARNINGS[d.type] ?? d.type,
+      voice: tier === 'possible' ? null : LIGHT_VOICE[d.type] ?? null,
     };
   }
 
-  const word = d.distance !== undefined ? distanceWord(d.distance) : 'ahead';
+  const sign = signKey ? SIGNS[signKey] : undefined;
   return {
-    key, kind, tier, detection: d, priority,
-    popup: HAZARD_WARNINGS[d.type] ?? `${d.type} ahead`,
-    voice: HAZARD_VOICE[word](d.type),
+    key, kind: 'sign', tier, detection: d, priority, follow: [key],
+    urgent: tier === 'normal' && signKey === 'children_crossing',
+    popup: tier === 'possible' ? `Possible ${(sign?.name ?? 'traffic sign').toLowerCase()}` : sign?.popup ?? 'Traffic sign',
+    voice: tier === 'possible' ? null : sign?.voice ?? null,
   };
 }
 
-const TIER_RANK: Record<AlertTier, number> = { possible: 1, normal: 2 };
-
 export class AlertGate {
-  private states = new Map<string, KeyState>();
+  private groups = new Map<string, GroupState>();
+  /** Per cooldown bucket: when it last warned and (lights) which colour. */
+  private lastAlert = new Map<string, { at: number; type: string }>();
   private lastGlobalAlertAt = -Infinity;
+  private potholeAlertTimes: number[] = [];
+  private nextPotholeId = 1;
 
   /**
    * Feed one frame's detections (all of them, including weak ones). Returns the single alert to
-   * show/speak now (or null) and any road hazards whose encounter ended and met the save rule.
-   * `position` is the rider's latest GPS fix.
+   * show/speak now (or null) and any road hazard objects/zones that ended with a save-level
+   * detection. `position` is the rider's latest GPS fix, `speedKmh` the GPS speed (null if unknown).
    */
-  process(results: DetectionResult[], now: number, position: LatLng | null): GateResult {
-    // 1. One piece of evidence per key per frame (several barriers in one frame are one sighting).
-    const seenThisFrame = new Map<string, Evidence>();
-    for (const ev of mergeRelated(results)) {
-      const key = alertKey(ev.detection);
-      const prev = seenThisFrame.get(key);
-      if (!prev || ev.detection.confidence > prev.detection.confidence) seenThisFrame.set(key, ev);
+  process(
+    results: DetectionResult[],
+    now: number,
+    position: LatLng | null,
+    speedKmh: number | null = null,
+  ): GateResult {
+    const evidence = mergeRelated(results.filter(plausible));
+
+    // 1. Assign each detection to its object/zone for this frame.
+    const frame = new Map<string, Evidence[]>();
+    const add = (key: string, ev: Evidence) => frame.set(key, [...(frame.get(key) ?? []), ev]);
+
+    const isActive = (key: string) => {
+      const g = this.groups.get(key);
+      return !!g && now - g.lastSeenAt <= goneAfter(g.kind);
+    };
+    const excavationNow = evidence.some((e) => e.detection.type === 'Road Excavation');
+    const barrierNow = evidence.some((e) => e.detection.type === 'Road Barrier');
+    const roadworkOn = excavationNow || isActive('zone:roadwork');
+
+    for (const ev of evidence) {
+      const g = groupName(ev.detection);
+      if (g === 'Pothole') continue; // matched individually below
+      if (g === 'Road Excavation') add('zone:roadwork', ev);
+      else if (g === 'Road Barrier') add(roadworkOn ? 'zone:roadwork' : 'zone:barrier', ev);
+      else if (g === 'sign:other' && roadworkOn) add('zone:roadwork', ev);
+      else if (g === 'sign:other' && (barrierNow || isActive('zone:barrier'))) add('zone:barrier', ev);
+      else if (isTrafficLight(ev.detection.type)) add(LIGHT_KEY, ev);
+      else add(g, ev);
+    }
+    for (const [key, ev] of this.matchPotholes(evidence.filter((e) => e.detection.type === 'Pothole'), now)) {
+      add(key, ev);
     }
 
-    for (const [key, { detection: d, raw }] of seenThisFrame) {
-      let st = this.states.get(key);
+    // 2. Update each object/zone seen this frame.
+    for (const [key, members] of frame) {
+      // The card follows the nearest (largest) member.
+      const nearest = members.reduce((a, b) => (area(b.detection.bbox) > area(a.detection.bbox) ? b : a));
+      let st = this.groups.get(key);
       if (!st) {
+        const kind: GroupKind = key.startsWith('pothole#')
+          ? 'pothole'
+          : key === 'zone:barrier'
+            ? 'barrierZone'
+            : key === 'zone:roadwork'
+              ? 'roadworkZone'
+              : key === LIGHT_KEY
+                ? 'light'
+                : 'sign';
         st = {
-          hits: [], lastSeenAt: -Infinity, latest: d, smoothed: 0, rawSmoothed: 0, latestRaw: raw,
-          lastBox: null, steadyCount: 0, steadySince: now,
-          inEncounter: false, blocked: false, alertedTier: null,
-          lastAlertAt: -Infinity, lastAlertPos: null, alertedType: null,
-          saveEligible: false, best: null,
+          kind,
+          cooldownKey: kind === 'pothole' ? 'pothole' : key,
+          hits: [], lastSeenAt: -Infinity, latest: nearest.detection,
+          inEncounter: false, blocked: false, alertedTier: null, pendingTier: null,
+          best: null, bestRaw: 0,
         };
-        this.states.set(key, st);
+        this.groups.set(key, st);
       }
-
-      const fresh = now - st.lastSeenAt > GONE_MS;
-      // A light changing colour restarts the evidence for the new colour.
-      const colourChange = key === LIGHT_KEY && st.latest.type !== d.type;
-      if (fresh || colourChange) {
-        st.smoothed = d.confidence;
-        st.rawSmoothed = raw;
+      // A light changing colour starts a new count for the new colour.
+      if (st.kind === 'light' && st.latest.type !== nearest.detection.type) {
         st.hits = [];
-        st.lastBox = null;
-      } else {
-        // Time-weighted average: the same at 6 or 30 FPS.
-        const alpha = 1 - Math.exp(-(now - st.lastSeenAt) / SMOOTHING_TAU_MS);
-        st.smoothed += alpha * (d.confidence - st.smoothed);
-        st.rawSmoothed += alpha * (raw - st.rawSmoothed);
+        st.pendingTier = null;
       }
-
-      if (st.lastBox && isSteady(st.lastBox, d.bbox)) {
-        st.steadyCount += 1;
-      } else {
-        st.steadyCount = 1;
-        st.steadySince = now;
-      }
-      st.lastBox = d.bbox;
       st.hits.push(now);
       st.lastSeenAt = now;
-      st.latest = d;
-      st.latestRaw = raw;
-    }
+      st.latest = nearest.detection;
 
-    // 2. Expire stale sightings; finished encounters release their save.
-    const saves: HazardSave[] = [];
-    for (const st of this.states.values()) {
-      st.hits = st.hits.filter((t) => now - t <= CONFIRM_WINDOW_MS);
-      if (now - st.lastSeenAt > GONE_MS) {
-        if (st.saveEligible && st.best) saves.push(st.best);
-        st.saveEligible = false;
-        st.best = null;
-        st.inEncounter = false;
-        st.blocked = false;
-        st.alertedTier = null;
-        st.steadyCount = 0;
-      }
-    }
-
-    // 3. Save rule (road hazards only, strict) and warning tiers.
-    const candidates: Alert[] = [];
-    for (const [key, st] of this.states) {
-      if (now - st.lastSeenAt > GONE_MS) continue;
-      const d = st.latest;
-
-      if (kindOf(d) === 'road' && seenThisFrame.has(key)) {
-        if (st.rawSmoothed >= SAVE_MIN_SMOOTHED && st.hits.length >= SAVE_MIN_SIGHTINGS) {
-          st.saveEligible = true;
-        }
-        // Keep the closest sighting (largest box): best position and confidence for the logs.
-        if (st.saveEligible) {
-          const area = d.bbox.w * d.bbox.h;
-          const bestArea = st.best ? st.best.detection.bbox.w * st.best.detection.bbox.h : -1;
-          if (area >= bestArea) st.best = { detection: d, position, at: now };
+      // One save per object/zone: its strongest road-hazard detection at the save level
+      // (the class's own confidence; a bigger box breaks ties: closer = better GPS match).
+      for (const m of members) {
+        if (!isRoadType(m.detection.type) || m.raw < SAVE_MIN_CONFIDENCE) continue;
+        const better =
+          !st.best || m.raw > st.bestRaw || (m.raw === st.bestRaw && area(m.detection.bbox) > area(st.best.detection.bbox));
+        if (better) {
+          // Save the model's own score for this box, never the merged value used for popups.
+          st.best = { detection: { ...m.detection, confidence: m.raw }, position, at: now };
+          st.bestRaw = m.raw;
         }
       }
 
-      const tier = this.tierFor(st, now);
+      // Best tier any member supports; stopped/crawling needs two detections.
+      const slow = speedKmh !== null && speedKmh < SLOW_SPEED_KMH;
+      st.hits = st.hits.filter((t) => now - t <= SIGHTING_WINDOW_MS);
+      let tier: AlertTier | null = null;
+      if (!slow || st.hits.length >= SLOW_SIGHTINGS) {
+        for (const m of members) {
+          const t = evidenceTier(m);
+          if (t && (!tier || TIER_RANK[t] > TIER_RANK[tier])) tier = t;
+        }
+      }
+      if (tier && (!st.pendingTier || TIER_RANK[tier] > TIER_RANK[st.pendingTier])) st.pendingTier = tier;
       if (tier && !st.inEncounter) {
         st.inEncounter = true;
-        st.blocked = !this.isNewEncounterWorthAlerting(key, st, now, position);
+        st.blocked = !this.worthAlerting(st, now);
       }
+    }
 
+    // 3. Finished objects/zones release their save and are forgotten.
+    const saves: HazardSave[] = [];
+    for (const [key, st] of this.groups) {
+      if (now - st.lastSeenAt <= goneAfter(st.kind)) continue;
+      if (st.best) saves.push(st.best);
+      this.groups.delete(key);
+    }
+
+    // 4. Collect popups due, then fire the most urgent one.
+    const candidates: { alert: Alert; st: GroupState }[] = [];
+    for (const [key, st] of this.groups) {
+      const due = st.pendingTier;
+      const upgrade = due !== null && TIER_RANK[due] > (st.alertedTier ? TIER_RANK[st.alertedTier] : 0);
+      // Kept while the light is in view, so a colour change during the popup gap isn't lost.
       const lightChanged =
-        key === LIGHT_KEY &&
-        tier === 'normal' &&
-        st.alertedType !== null &&
-        d.type !== st.alertedType &&
-        now - st.lastAlertAt >= LIGHT_COLOR_CHANGE_GAP_MS;
-
-      const upgrade = tier !== null && TIER_RANK[tier] > (st.alertedTier ? TIER_RANK[st.alertedTier] : 0);
-      if (tier && ((!st.blocked && upgrade) || lightChanged)) candidates.push(buildAlert(key, d, tier));
+        st.kind === 'light' &&
+        due === 'normal' &&
+        st.alertedTier !== null &&
+        this.lastAlert.get(st.cooldownKey)?.type !== st.latest.type;
+      if (due && ((!st.blocked && upgrade) || lightChanged)) {
+        candidates.push({ alert: buildAlert(key, st, due, st.latest), st });
+      }
     }
 
     if (candidates.length === 0 || now - this.lastGlobalAlertAt < POPUP_SPACING_MS) {
       return { alert: null, saves };
     }
 
-    // 4. Fire the most urgent one; the rest stay queued while their object is in view.
     candidates.sort(
       (a, b) =>
-        TIER_RANK[b.tier] - TIER_RANK[a.tier] ||
-        a.priority - b.priority ||
-        b.detection.confidence - a.detection.confidence,
+        Number(b.alert.urgent) - Number(a.alert.urgent) ||
+        TIER_RANK[b.alert.tier] - TIER_RANK[a.alert.tier] ||
+        a.alert.priority - b.alert.priority ||
+        b.alert.detection.confidence - a.alert.detection.confidence,
     );
-    const alert = candidates[0];
-    const st = this.states.get(alert.key)!;
+    const { alert, st } = candidates[0];
+
+    // Pothole clusters: the 3rd warning in 10 s speaks once for all; later ones stay silent.
+    if (st.kind === 'pothole' && alert.voice) {
+      this.potholeAlertTimes = this.potholeAlertTimes.filter((t) => now - t <= CLUSTER_WINDOW_MS);
+      this.potholeAlertTimes.push(now);
+      const n = this.potholeAlertTimes.length;
+      if (n === CLUSTER_COUNT) alert.voice = CLUSTER_VOICE;
+      else if (n > CLUSTER_COUNT && !alert.urgent) alert.voice = null;
+    }
+
     st.alertedTier = alert.tier;
-    st.lastAlertAt = now;
-    st.lastAlertPos = position;
-    st.alertedType = alert.detection.type;
+    this.lastAlert.set(st.cooldownKey, { at: now, type: st.latest.type });
     this.lastGlobalAlertAt = now;
     return { alert, saves };
   }
 
   /** Clears all memory, e.g. when a ride ends. */
   reset(): void {
-    this.states.clear();
+    this.groups.clear();
+    this.lastAlert.clear();
+    this.potholeAlertTimes = [];
     this.lastGlobalAlertAt = -Infinity;
   }
 
-  /** Which warning (if any) the object's evidence supports right now. */
-  private tierFor(st: KeyState, now: number): AlertTier | null {
-    const d = st.latest;
-    const tuning = classTuning(d);
-    const span = st.hits.length > 0 ? st.hits[st.hits.length - 1] - st.hits[0] : 0;
-
-    const t = closeness(d.bbox);
-    const normalThreshold = tuning.normal - FAR_THRESHOLD_DROP * (1 - t);
-    const sightingsNeeded = t < 0.5 ? SIGHTINGS_FAR : SIGHTINGS_CLOSE;
-    const trendPasses =
-      st.rawSmoothed >= normalThreshold && st.hits.length >= sightingsNeeded && span >= CONFIRM_SPAN_MS;
-    const fastPasses =
-      st.latestRaw >= FAST_PATH_CONFIDENCE && st.hits.length >= CONFIRM_FAST_SIGHTINGS && span >= CONFIRM_SPAN_MS;
-    if (trendPasses || fastPasses) return 'normal';
-
-    const steadyPasses =
-      st.smoothed >= tuning.possible &&
-      st.steadyCount >= POSSIBLE_SIGHTINGS &&
-      now - st.steadySince >= POSSIBLE_MIN_MS;
-    return steadyPasses ? 'possible' : null;
+  /**
+   * Gives each pothole detection its object: the closest active pothole it plausibly moved from
+   * (overlapping, or near and not jumping up the screen), else a new pothole.
+   */
+  private matchPotholes(potholes: Evidence[], now: number): [string, Evidence][] {
+    const out: [string, Evidence][] = [];
+    const used = new Set<string>();
+    const sorted = [...potholes].sort((a, b) => b.detection.confidence - a.detection.confidence);
+    for (const ev of sorted) {
+      const box = ev.detection.bbox;
+      const c = centerOf(box);
+      let bestKey: string | null = null;
+      let bestDist = Infinity;
+      for (const [key, st] of this.groups) {
+        if (st.kind !== 'pothole' || used.has(key) || now - st.lastSeenAt > POTHOLE_PASSED_MS) continue;
+        const prev = st.latest.bbox;
+        const pc = centerOf(prev);
+        const dist = Math.hypot(c.x - pc.x, c.y - pc.y);
+        const allowed = Math.max(POTHOLE_MATCH_MIN, POTHOLE_MATCH_BOX_FACTOR * Math.max(prev.w, prev.h, box.w, box.h));
+        const same = overlapOfSmaller(prev, box) >= 0.3 || (dist <= allowed && c.y >= pc.y - POTHOLE_MATCH_MAX_RISE);
+        if (same && dist < bestDist) {
+          bestDist = dist;
+          bestKey = key;
+        }
+      }
+      const key = bestKey ?? `pothole#${this.nextPotholeId++}`;
+      used.add(key);
+      out.push([key, ev]);
+    }
+    return out;
   }
 
-  private isNewEncounterWorthAlerting(
-    key: string,
-    st: KeyState,
-    now: number,
-    position: LatLng | null,
-  ): boolean {
-    if (st.lastAlertAt === -Infinity) return true;
-    const elapsed = now - st.lastAlertAt;
-
-    if (key === LIGHT_KEY) {
-      return elapsed >= LIGHT_COOLDOWN_MS || st.latest.type !== st.alertedType;
+  /** Cooldown between different objects/zones of the same kind (the same one never repeats). */
+  private worthAlerting(st: GroupState, now: number): boolean {
+    const last = this.lastAlert.get(st.cooldownKey);
+    if (!last) return true;
+    const elapsed = now - last.at;
+    switch (st.kind) {
+      case 'pothole':
+        return elapsed >= COOLDOWN_MS.pothole;
+      case 'barrierZone':
+        return elapsed >= COOLDOWN_MS.barrierZone;
+      case 'roadworkZone':
+        return elapsed >= COOLDOWN_MS.roadworkZone;
+      case 'light':
+        return elapsed >= COOLDOWN_MS.light || st.latest.type !== last.type;
+      case 'sign':
+        // Time only: a repeated sign type within 10 s gets one reminder.
+        return elapsed >= COOLDOWN_MS.sign;
     }
-
-    if (key.startsWith('sign:')) {
-      if (elapsed < SIGN_COOLDOWN_MS) return false;
-      // Without GPS, fall back to time alone.
-      if (!position || !st.lastAlertPos) return true;
-      return metersBetween(position, st.lastAlertPos) >= SIGN_MIN_DISTANCE_M;
-    }
-
-    return elapsed >= ROAD_HAZARD_COOLDOWN_MS;
   }
+}
+
+/** Identity used by older callers: the class group of a detection. */
+export function alertKey(d: DetectionResult): string {
+  return groupName(d);
 }
