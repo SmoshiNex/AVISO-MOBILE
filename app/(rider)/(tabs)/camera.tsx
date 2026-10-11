@@ -133,10 +133,23 @@ export default function CameraScreen() {
                 let coords = save.position;
                 if (!coords) {
                     const last = await Location.getLastKnownPositionAsync();
-                    coords = last ? last.coords : null;
+                    coords = last
+                        ? {
+                              latitude: last.coords.latitude,
+                              longitude: last.coords.longitude,
+                              accuracy: last.coords.accuracy,
+                              heading:
+                                  (last.coords.speed ?? 0) >= 2 && last.coords.heading != null && last.coords.heading >= 0
+                                      ? last.coords.heading
+                                      : null,
+                          }
+                        : null;
                 }
                 if (!coords) return; // Location unavailable — skip logging
                 const { latitude, longitude } = coords;
+                // Prediction dataset: how sure the GPS was, and the direction of travel (null when stopped).
+                const gps_accuracy = coords.accuracy != null ? Math.round(coords.accuracy * 100) / 100 : undefined;
+                const heading = coords.heading != null ? Math.round(coords.heading * 100) / 100 : undefined;
                 const detected_at = new Date(save.at).toISOString();
 
                 // Online-first: POST to backend immediately when connected.
@@ -150,6 +163,9 @@ export default function CameraScreen() {
                 let remoteId: number | undefined;
                 // The server resolves the real barangay from the GPS point; until then the area stays unknown.
                 let area: string | undefined;
+                // Hazard to Hazard Distance, worked out by the server across all riders.
+                let nearestCode: string | undefined;
+                let nearestDistance: number | undefined;
 
                 if (isOnline) {
                     try {
@@ -159,6 +175,8 @@ export default function CameraScreen() {
                             longitude,
                             confidence: result.confidence,
                             distance: result.distance ?? null,
+                            gps_accuracy: gps_accuracy ?? null,
+                            heading: heading ?? null,
                             rider_code: riderCodeRef.current,
                             detected_at,
                             // The ride it was seen on; the server also matches by time if unknown.
@@ -166,6 +184,8 @@ export default function CameraScreen() {
                         })) as any;
                         remoteId = response?.data?.id ?? undefined;
                         area = response?.data?.area ?? undefined;
+                        nearestCode = response?.data?.nearest_hazard_code ?? undefined;
+                        nearestDistance = response?.data?.nearest_hazard_distance ?? undefined;
                         synced = !!remoteId;
                     } catch {
                         // Backend unreachable — save to offline queue, batch sync retries
@@ -178,6 +198,10 @@ export default function CameraScreen() {
                     type: result.type,
                     confidence: result.confidence,
                     distance: result.distance,
+                    gps_accuracy,
+                    heading,
+                    nearest_hazard_code: nearestCode,
+                    nearest_hazard_distance: nearestDistance,
                     latitude,
                     longitude,
                     area,

@@ -90,6 +90,6 @@ export const styles = StyleSheet.create({
   closeBtn: { padding: 4, minHeight: 44, minWidth: 44, alignItems: 'center', justifyContent: 'center' },
   detailGrid: { gap: 14 },
   detailRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  detailLabel: { fontSize: 13, fontFamily: Fonts.regular, width: 90 },
+  detailLabel: { fontSize: 13, fontFamily: Fonts.regular, width: 118 },
   detailValue: { fontSize: 13, fontFamily: Fonts.semibold, flex: 1 },
 });

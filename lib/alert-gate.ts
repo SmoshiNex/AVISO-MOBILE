@@ -49,7 +49,14 @@ import type { DetectionResult } from '@/types';
 type SignInfo = { name: string; popup: string; voice: string | null };
 const SIGNS = roadSigns as Record<string, SignInfo>;
 
-export type LatLng = { latitude: number; longitude: number };
+export type LatLng = {
+  latitude: number;
+  longitude: number;
+  /** GPS accuracy radius in meters (how sure the phone is about the spot), saved with the hazard. */
+  accuracy?: number | null;
+  /** Direction of travel, degrees from north; null when stopped (saved with the hazard). */
+  heading?: number | null;
+};
 
 export type AlertKind = 'road' | 'sign' | 'light';
 

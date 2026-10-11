@@ -53,6 +53,17 @@ export const HAZARD_REAL_WIDTHS_CM: Partial<Record<string, number>> = {
   'Road Barrier': 100,
 };
 
+/**
+ * Farthest distance (m) at which the model first detected each hazard in the team's
+ * field test (USB webcam, daytime, measured with the iPhone Measure app). A camera
+ * distance estimate is never larger than this.
+ */
+export const HAZARD_MAX_RANGE_M: Partial<Record<string, number>> = {
+  'Pothole': 8.2,
+  'Road Excavation': 32.6,
+  'Road Barrier': 27.3,
+};
+
 // The traffic signs the model can tell apart (keys of road_sign_instructions.json).
 export type SignKey =
   | 'children_crossing'

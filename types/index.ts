@@ -104,6 +104,12 @@ export type LocalHazardLog = {
   type: string;
   confidence: number;
   distance?: number;
+  /** GPS accuracy radius (m) and direction of travel (degrees) at detection, for the prediction dataset. */
+  gps_accuracy?: number;
+  heading?: number;
+  /** Hazard to Hazard Distance from the server: nearest other active hazard of the same type. */
+  nearest_hazard_code?: string;
+  nearest_hazard_distance?: number;
   latitude: number;
   longitude: number;
   area?: string;

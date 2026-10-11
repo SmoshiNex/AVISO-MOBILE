@@ -158,10 +158,16 @@ export function useArHeading(active: boolean): ArHeading {
     Location.watchPositionAsync(
       { accuracy: Location.Accuracy.BestForNavigation, timeInterval: 1000, distanceInterval: 1 },
       ({ coords, timestamp }) => {
-        positionRef.current = { latitude: coords.latitude, longitude: coords.longitude };
-        speedKmhRef.current = coords.speed != null && coords.speed >= 0 ? coords.speed * 3.6 : null;
         moving = (coords.speed ?? 0) >= MOVING_SPEED_MS;
         const course = coords.heading;
+        positionRef.current = {
+          latitude: coords.latitude,
+          longitude: coords.longitude,
+          accuracy: coords.accuracy,
+          // The GPS course is only meaningful while moving.
+          heading: moving && course !== null && course >= 0 ? course : null,
+        };
+        speedKmhRef.current = coords.speed != null && coords.speed >= 0 ? coords.speed * 3.6 : null;
         if (moving && course !== null && course >= 0) {
           if (lastGpsHeading !== null && timestamp > lastGpsHeadingAt) {
             gpsRate = wrapDegrees(course - lastGpsHeading) / ((timestamp - lastGpsHeadingAt) / 1000);

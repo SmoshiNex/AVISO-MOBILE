@@ -193,6 +193,8 @@ async function syncHazardLogs(): Promise<number> {
         longitude: log.longitude,
         confidence: log.confidence,
         distance: log.distance ?? null,
+        gps_accuracy: log.gps_accuracy ?? null,
+        heading: log.heading ?? null,
         rider_code: riderCode,
         detected_at: log.detected_at,
         trip_id: await remoteTripId(log.trip_id),
@@ -200,8 +202,8 @@ async function syncHazardLogs(): Promise<number> {
 
       const remoteId = (response as any)?.data?.id;
       if (remoteId) {
-        // Store the barangay the server resolved from the GPS point.
-        await markHazardLogSynced(log.id, remoteId, (response as any)?.data?.area);
+        // Store the barangay and Hazard to Hazard Distance the server worked out.
+        await markHazardLogSynced(log.id, remoteId, (response as any)?.data ?? {});
         count++;
       }
     } catch {
@@ -334,7 +336,11 @@ export async function pullFromBackend(force = false): Promise<void> {
     const logs = asArray(await api.get('/rider/hazard-logs'), 'data');
     await clearSyncedHazardLogs();
     for (const log of logs) {
-      const reconciled = await reconcileHazardLogSynced(log.detected_at, log.type, log.id);
+      const nearest = {
+        nearest_hazard_code: log.nearest_hazard_code ?? null,
+        nearest_hazard_distance: log.nearest_hazard_distance != null ? Number(log.nearest_hazard_distance) : null,
+      };
+      const reconciled = await reconcileHazardLogSynced(log.detected_at, log.type, log.id, nearest);
       if (!reconciled) {
         // The server links detections to its trip id; translate it to this phone's trip.
         const localTrip = log.trip_id ? await getTripByRemoteId(log.trip_id) : null;
@@ -344,6 +350,10 @@ export async function pullFromBackend(force = false): Promise<void> {
           type:        log.type,
           confidence:  parseFloat(String(log.confidence)) / 100,
           distance:    log.distance ? parseFloat(String(log.distance)) : undefined,
+          gps_accuracy: log.gps_accuracy != null ? parseFloat(String(log.gps_accuracy)) : undefined,
+          heading:     log.heading != null ? parseFloat(String(log.heading)) : undefined,
+          nearest_hazard_code: nearest.nearest_hazard_code ?? undefined,
+          nearest_hazard_distance: nearest.nearest_hazard_distance ?? undefined,
           latitude:    parseFloat(String(log.latitude)),
           longitude:   parseFloat(String(log.longitude)),
           area:        log.area,

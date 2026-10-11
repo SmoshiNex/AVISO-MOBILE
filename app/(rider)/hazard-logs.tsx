@@ -18,6 +18,7 @@ import { getHazardLogs, getTripsByIds } from '@/lib/local-db';
 import { placeLabel } from '@/lib/barangay-lookup';
 import { rideLabel, tripRoute } from '@/lib/route-utils';
 import { pullFromBackend } from '@/lib/sync-service';
+import { distanceWord } from '@/lib/distance-estimator';
 import { HAZARD_COLORS } from '@/constants/hazards';
 import type { LocalHazardLog } from '@/types';
 import { styles } from '@/styles/hazard-logs.style';
@@ -115,6 +116,11 @@ export default function HazardLogsScreen() {
               {item.area ?? 'Pending sync'}
             </Text>
           )}
+          {item.nearest_hazard_distance !== undefined && (
+            <Text style={[styles.rowArea, { color: textSecondary }]} numberOfLines={1}>
+              {hazardToHazardLabel(item)}
+            </Text>
+          )}
           <View style={styles.rowTrip}>
             <Ionicons name="bicycle-outline" size={12} color={item.trip_id && tripInfo[item.trip_id] ? primary : textSecondary} />
             <Text
@@ -131,7 +137,7 @@ export default function HazardLogsScreen() {
           </Text>
           {item.distance !== undefined && (
             <Text style={[styles.distance, { color: textSecondary }]}>
-              {item.distance}m
+              ~{item.distance} m
             </Text>
           )}
           {!item.synced && (
@@ -214,12 +220,19 @@ export default function HazardLogsScreen() {
                 {selected.distance !== undefined && (
                   <DetailRow
                     icon="resize-outline"
-                    label="Distance"
-                    value={`${selected.distance} meters`}
+                    label="Camera Hazard Distance"
+                    value={cameraDistanceLabel(selected.distance)}
                     textColor={text}
                     labelColor={textSecondary}
                   />
                 )}
+                <DetailRow
+                  icon="git-compare-outline"
+                  label="Hazard to Hazard Distance"
+                  value={selected.synced ? hazardToHazardLabel(selected) : 'Calculated after sync'}
+                  textColor={text}
+                  labelColor={textSecondary}
+                />
                 {(selected.area || !selected.synced) && (
                   <DetailRow
                     icon="map-outline"
@@ -272,6 +285,19 @@ ${tripInfo[selected.trip_id].places}`
       </Modal>
     </SafeAreaView>
   );
+}
+
+const DISTANCE_WORD_SHORT = { near: 'Near', ahead: 'Ahead', far: 'Far' } as const;
+
+/** Camera distance is an estimate from the box size, so it carries the Near/Ahead/Far word. */
+function cameraDistanceLabel(meters: number): string {
+  return `~${meters} m · ${DISTANCE_WORD_SHORT[distanceWord(meters)]}`;
+}
+
+/** Nearest other hazard of the same type (from the server), e.g. "18 m → POT-20261011-0003". */
+function hazardToHazardLabel(log: LocalHazardLog): string {
+  if (log.nearest_hazard_distance === undefined || !log.nearest_hazard_code) return '—';
+  return `${Math.round(log.nearest_hazard_distance)} m → ${log.nearest_hazard_code}`;
 }
 
 function DetailRow({
