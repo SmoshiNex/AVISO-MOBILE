@@ -14,6 +14,7 @@ import Toast from 'react-native-toast-message';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { useTripContext } from '@/contexts/trip-context';
 import { BarangayBoundaries } from '@/components/BarangayBoundaries';
+import { CoordinateSearch } from '@/components/CoordinateSearch';
 import { getHazardLogs } from '@/lib/local-db';
 import { api } from '@/lib/api-client';
 import { HAZARD_COLORS } from '@/constants/hazards';
@@ -67,6 +68,9 @@ export default function MapScreen() {
 
   const [showHeatmap, setShowHeatmap] = useState(false);
   const [showBarangays, setShowBarangays] = useState(true);
+  const [showSearch, setShowSearch] = useState(false);
+  const openSearch = useCallback(() => setShowSearch(true), []);
+  const closeSearch = useCallback(() => setShowSearch(false), []);
   const [currentZoom, setCurrentZoom] = useState(14);
 
   const heatmapData = useMemo(() => {
@@ -185,6 +189,7 @@ export default function MapScreen() {
           setShowHeatmap={setShowHeatmap} 
           showBarangays={showBarangays}
           setShowBarangays={setShowBarangays}
+          onSearchPress={openSearch}
           mapTheme={mapTheme}
           setMapTheme={setMapTheme}
           insets={insets} 
@@ -204,7 +209,8 @@ export default function MapScreen() {
           </MapMarker>
         )}
 
-        <BarangayBoundaries visible={showBarangays} />
+        <BarangayBoundaries visible={showBarangays} hazards={backendHazards} />
+        <CoordinateSearch open={showSearch} onClose={closeSearch} top={insets.top + 8} />
 
         {/* Render markers natively for 60fps performance */}
         <Mapbox.ShapeSource 
@@ -241,7 +247,8 @@ export default function MapScreen() {
       </Map>
 
       {/* Per-type hazard stat cards */}
-      {(liveHazards.length + backendHazards.length) > 0 && (
+      {/* The coordinate search takes this spot while it's open. */}
+      {!showSearch && (liveHazards.length + backendHazards.length) > 0 && (
         <View style={[styles.statsPanel, { paddingTop: insets.top + 8 }]} pointerEvents="box-none">
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.statsScroll}>
             {HAZARD_STAT_GROUPS.map((group) => {
@@ -338,7 +345,7 @@ export default function MapScreen() {
   );
 }
 
-function MapFeatureToggles({ showHeatmap, setShowHeatmap, showBarangays, setShowBarangays, mapTheme, setMapTheme, insets }: any) {
+function MapFeatureToggles({ showHeatmap, setShowHeatmap, showBarangays, setShowBarangays, onSearchPress, mapTheme, setMapTheme, insets }: any) {
   const { cameraRef, isLoaded, registerOverlay, unregisterOverlay, theme: currentTheme } = useMap();
   const [is3D, setIs3D] = useState(false);
   const [isRotating, setIsRotating] = useState(false);
@@ -372,6 +379,13 @@ function MapFeatureToggles({ showHeatmap, setShowHeatmap, showBarangays, setShow
 
   const controlsElement = useMemo(() => (
     <View style={[styles.featureToggles, { paddingTop: insets.top + 240 }]} pointerEvents="box-none">
+      <TouchableOpacity
+        style={styles.featureBtn}
+        onPress={onSearchPress}
+        accessibilityLabel="Search coordinates"
+      >
+        <Ionicons name="search-outline" size={20} color="#444" />
+      </TouchableOpacity>
       <TouchableOpacity
         style={[styles.featureBtn, mapTheme !== "system" && styles.featureBtnActive]}
         onPress={() => {
@@ -414,7 +428,7 @@ function MapFeatureToggles({ showHeatmap, setShowHeatmap, showBarangays, setShow
         </TouchableOpacity>
       )}
     </View>
-  ), [insets.top, showHeatmap, showBarangays, is3D, isRotating, setShowHeatmap, setShowBarangays, toggle3D, toggleRotation]);
+  ), [insets.top, showHeatmap, showBarangays, is3D, isRotating, setShowHeatmap, setShowBarangays, onSearchPress, toggle3D, toggleRotation]);
 
   useEffect(() => {
     if (isLoaded) {

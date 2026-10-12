@@ -42,6 +42,8 @@ export type HazardLog = {
   haz_code?: string;
   type: HazardType;
   area?: string;
+  /** PSGC barangay code the server resolved from the GPS point. */
+  barangay_code?: string | null;
   latitude: string;
   longitude: string;
   confidence: string;
