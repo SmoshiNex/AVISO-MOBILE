@@ -1,8 +1,9 @@
-﻿import { useEffect, useState, useCallback } from 'react';
+﻿import { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
-  FlatList,
+  SectionList,
+  ScrollView,
   TouchableOpacity,
   Modal,
   RefreshControl,
@@ -26,6 +27,52 @@ import { styles } from '@/styles/hazard-logs.style';
 /** What a detection shows about the ride it was seen on. */
 type TripInfo = { label: string; places: string };
 
+const TYPE_FILTERS = [
+  { key: 'all', label: 'All' },
+  { key: 'Pothole', label: 'Pothole' },
+  { key: 'Road Excavation', label: 'Excavation' },
+  { key: 'Road Barrier', label: 'Barrier' },
+] as const;
+type TypeFilter = (typeof TYPE_FILTERS)[number]['key'];
+
+const WHEN_FILTERS = [
+  { key: 'today', label: 'Today', days: 1 },
+  { key: '7d', label: '7 days', days: 7 },
+  { key: '30d', label: '30 days', days: 30 },
+  { key: 'all', label: 'All', days: null },
+] as const;
+type WhenFilter = (typeof WHEN_FILTERS)[number]['key'];
+
+type DaySection = { key: string; title: string; data: LocalHazardLog[] };
+
+/** Local calendar day, e.g. "2026-10-11" — groups detections by the rider's own date. */
+function dayKey(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/** Start of the day `daysBack - 1` days ago (Today = since midnight, 7 days = today and the 6 before). */
+function sinceMs(daysBack: number): number {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() - (daysBack - 1));
+  return d.getTime();
+}
+
+/** "Today", "Yesterday", or e.g. "Sat, Oct 11". */
+function dayTitle(d: Date): string {
+  const today = new Date();
+  const yesterday = new Date();
+  yesterday.setDate(today.getDate() - 1);
+  if (dayKey(d) === dayKey(today)) return 'Today';
+  if (dayKey(d) === dayKey(yesterday)) return 'Yesterday';
+  return d.toLocaleDateString('en-PH', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    ...(d.getFullYear() !== today.getFullYear() ? { year: 'numeric' } : {}),
+  });
+}
+
 export default function HazardLogsScreen() {
   const background = useThemeColor({}, 'background');
   const backgroundElement = useThemeColor({}, 'backgroundElement');
@@ -40,6 +87,39 @@ export default function HazardLogsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [selected, setSelected] = useState<LocalHazardLog | null>(null);
   const [tripInfo, setTripInfo] = useState<Record<number, TripInfo>>({});
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>('all');
+  const [whenFilter, setWhenFilter] = useState<WhenFilter>('all');
+
+  // Logs inside the chosen time range; the type chips count from these.
+  const inRange = useMemo(() => {
+    const days = WHEN_FILTERS.find((w) => w.key === whenFilter)?.days ?? null;
+    if (days === null) return logs;
+    const since = sinceMs(days);
+    return logs.filter((l) => new Date(l.detected_at).getTime() >= since);
+  }, [logs, whenFilter]);
+
+  const typeCounts = useMemo(() => {
+    const counts: Record<string, number> = { all: inRange.length };
+    for (const l of inRange) counts[l.type] = (counts[l.type] ?? 0) + 1;
+    return counts;
+  }, [inRange]);
+
+  // Filtered, then grouped by day (logs are already newest first).
+  const sections = useMemo(() => {
+    const shown = typeFilter === 'all' ? inRange : inRange.filter((l) => l.type === typeFilter);
+    const byDay: DaySection[] = [];
+    for (const log of shown) {
+      const d = new Date(log.detected_at);
+      const key = dayKey(d);
+      const last = byDay[byDay.length - 1];
+      if (last?.key === key) last.data.push(log);
+      else byDay.push({ key, title: dayTitle(d), data: [log] });
+    }
+    return byDay;
+  }, [inRange, typeFilter]);
+
+  const shownCount = useMemo(() => sections.reduce((n, s) => n + s.data.length, 0), [sections]);
+  const isFiltered = typeFilter !== 'all' || whenFilter !== 'all';
 
   const loadLogs = useCallback(async () => {
     const data = await getHazardLogs();
@@ -161,25 +241,81 @@ export default function HazardLogsScreen() {
       {/* Header */}
       <View style={[styles.header, { borderBottomColor: border }]}>
         <Text style={[styles.headerTitle, { color: text }]}>My Detections</Text>
-        <Text style={[styles.headerCount, { color: textSecondary }]}>{logs.length} total</Text>
+        <Text style={[styles.headerCount, { color: textSecondary }]}>
+          {isFiltered ? `${shownCount} of ${logs.length}` : `${logs.length} total`}
+        </Text>
       </View>
 
-      <FlatList
-        data={logs}
+      {/* Filters: type (with counts for the chosen time range) and time range */}
+      {logs.length > 0 && (
+        <View style={[styles.filterBar, { borderBottomColor: border }]}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
+            {TYPE_FILTERS.map((f) => (
+              <FilterChip
+                key={f.key}
+                label={`${f.label} ${typeCounts[f.key] ?? 0}`}
+                dotColor={f.key === 'all' ? undefined : HAZARD_COLORS[f.key]}
+                active={typeFilter === f.key}
+                onPress={() => setTypeFilter(f.key)}
+                activeColor={primary}
+                textColor={text}
+                borderColor={border}
+                background={card}
+              />
+            ))}
+          </ScrollView>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
+            {WHEN_FILTERS.map((f) => (
+              <FilterChip
+                key={f.key}
+                label={f.label}
+                active={whenFilter === f.key}
+                onPress={() => setWhenFilter(f.key)}
+                activeColor={primary}
+                textColor={text}
+                borderColor={border}
+                background={card}
+              />
+            ))}
+          </ScrollView>
+        </View>
+      )}
+
+      <SectionList
+        sections={sections}
         keyExtractor={(item) => String(item.id)}
         renderItem={renderItem}
+        renderSectionHeader={({ section }) => (
+          <View style={[styles.sectionHeader, { backgroundColor: background }]}>
+            <Text style={[styles.sectionTitle, { color: text }]}>{section.title}</Text>
+            <Text style={[styles.sectionCount, { color: textSecondary }]}>
+              {section.data.length} {section.data.length === 1 ? 'detection' : 'detections'}
+            </Text>
+          </View>
+        )}
+        stickySectionHeadersEnabled
         contentContainerStyle={styles.listContent}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={primary} />
         }
         ListEmptyComponent={
-          <View style={[styles.empty, { backgroundColor: backgroundElement }]}>
-            <Ionicons name="warning-outline" size={48} color={textSecondary} />
-            <Text style={[styles.emptyTitle, { color: text }]}>No detections yet</Text>
-            <Text style={[styles.emptySubtitle, { color: textSecondary }]}>
-              Hazards detected during your rides will appear here
-            </Text>
-          </View>
+          logs.length > 0 ? (
+            <View style={[styles.empty, { backgroundColor: backgroundElement }]}>
+              <Ionicons name="filter-outline" size={48} color={textSecondary} />
+              <Text style={[styles.emptyTitle, { color: text }]}>No detections</Text>
+              <Text style={[styles.emptySubtitle, { color: textSecondary }]}>
+                Nothing matches these filters. Try another type or a longer time range.
+              </Text>
+            </View>
+          ) : (
+            <View style={[styles.empty, { backgroundColor: backgroundElement }]}>
+              <Ionicons name="warning-outline" size={48} color={textSecondary} />
+              <Text style={[styles.emptyTitle, { color: text }]}>No detections yet</Text>
+              <Text style={[styles.emptySubtitle, { color: textSecondary }]}>
+                Hazards detected during your rides will appear here
+              </Text>
+            </View>
+          )
         }
         ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
       />
@@ -298,6 +434,44 @@ function cameraDistanceLabel(meters: number): string {
 function hazardToHazardLabel(log: LocalHazardLog): string {
   if (log.nearest_hazard_distance === undefined || !log.nearest_hazard_code) return '—';
   return `${Math.round(log.nearest_hazard_distance)} m → ${log.nearest_hazard_code}`;
+}
+
+function FilterChip({
+  label,
+  dotColor,
+  active,
+  onPress,
+  activeColor,
+  textColor,
+  borderColor,
+  background,
+}: {
+  label: string;
+  dotColor?: string;
+  active: boolean;
+  onPress: () => void;
+  activeColor: string;
+  textColor: string;
+  borderColor: string;
+  background: string;
+}) {
+  return (
+    <TouchableOpacity
+      style={[
+        styles.chip,
+        active
+          ? { backgroundColor: activeColor, borderColor: activeColor }
+          : { backgroundColor: background, borderColor },
+      ]}
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityState={{ selected: active }}
+      accessibilityLabel={`Show ${label}`}
+    >
+      {dotColor && <View style={[styles.chipDot, { backgroundColor: dotColor }]} />}
+      <Text style={[styles.chipText, { color: active ? '#fff' : textColor }]}>{label}</Text>
+    </TouchableOpacity>
+  );
 }
 
 function DetailRow({

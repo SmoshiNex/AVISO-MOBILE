@@ -18,6 +18,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as SecureStore from 'expo-secure-store';
 import { api } from '@/lib/api-client';
+import { clearRiderData } from '@/lib/local-db';
 import { pullFromBackend } from '@/lib/sync-service';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { useColorScheme } from '@/hooks/use-color-scheme';
@@ -50,6 +51,16 @@ export default function LoginScreen() {
       await SecureStore.setItemAsync('rider_token', res.token);
       await SecureStore.setItemAsync('rider_user', JSON.stringify(res.user));
       await SecureStore.setItemAsync('rider_code', res.user.username ?? '');
+      // A different account than last time on this phone: drop the previous rider's local data.
+      const riderId = String(res.user.id);
+      if ((await SecureStore.getItemAsync('last_rider_id')) !== riderId) {
+        try {
+          await clearRiderData();
+          await SecureStore.setItemAsync('last_rider_id', riderId);
+        } catch {
+          // Must not block login; it is retried on the next login.
+        }
+      }
       // Force the pull so it is never skipped by the cooldown, and await it so
       // the rider's trips/hazard logs/contacts are in the local DB before the
       // home screen mounts. A pull failure must not block login navigation.

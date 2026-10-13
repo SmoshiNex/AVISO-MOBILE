@@ -311,6 +311,29 @@ export async function markTripSynced(localId: number, remoteId: number): Promise
   );
 }
 
+/**
+ * Empties everything that belongs to one rider, so the next account on this phone
+ * starts clean (its own data downloads again from the server).
+ */
+export async function clearRiderData(): Promise<void> {
+  await getDb().execAsync(`
+    DELETE FROM trips;
+    DELETE FROM hazard_logs;
+    DELETE FROM crash_events;
+    DELETE FROM ride_events;
+    DELETE FROM emergency_contacts;
+  `);
+}
+
+/** Rides and detections not on the server yet; they would be lost if the phone's copy is emptied. */
+export async function countUnsyncedRiderData(): Promise<{ trips: number; detections: number }> {
+  const [tripsRow, detectionsRow] = await Promise.all([
+    getDb().getFirstAsync<{ n: number }>(`SELECT COUNT(*) AS n FROM trips WHERE status = 'ended' AND synced = 0`),
+    getDb().getFirstAsync<{ n: number }>(`SELECT COUNT(*) AS n FROM hazard_logs WHERE synced = 0`),
+  ]);
+  return { trips: tripsRow?.n ?? 0, detections: detectionsRow?.n ?? 0 };
+}
+
 // ─── HAZARD LOGS ─────────────────────────────────────────────────────────────
 
 export async function saveHazardLog(log: Omit<LocalHazardLog, 'id'>): Promise<number> {

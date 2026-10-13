@@ -4,7 +4,9 @@ import {
   Text,
   TouchableOpacity,
   ScrollView,
+  ActivityIndicator,
 } from 'react-native';
+import * as Location from 'expo-location';
 
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Map, MapMarker, MapRoute, MapUserLocation, MapControls, MapHeatmap, useMap } from '@/components/ui/map';
@@ -150,10 +152,23 @@ export default function MapScreen() {
   }, [endTrip]);
 
   // ── LIVE MODE ───────────────────────────────────────────────────────────────
-  const liveCenter: [number, number] = activeTrip?.current_lat && activeTrip?.current_lng
+  // During a ride the map follows the rider until they drag it away; the locate button resumes it.
+  const [following, setFollowing] = useState(true);
+  const followRider = isActive && following;
+  const resumeFollowing = useCallback(() => setFollowing(true), []);
+  useEffect(() => {
+    if (isActive) setFollowing(true);
+  }, [isActive]);
+
+  const tripCenter: [number, number] | null = activeTrip?.current_lat && activeTrip?.current_lng
     ? [activeTrip.current_lng, activeTrip.current_lat]
-    : ZAMBOANGA_CENTER;
-  const liveZoom = activeTrip?.current_lat && activeTrip?.current_lng ? 15 : ZAMBOANGA_ZOOM;
+    : null;
+  // While the rider is looking around mid-ride, keep the camera still instead of
+  // snapping back to every new GPS point.
+  const lastCenterRef = useRef<[number, number]>(ZAMBOANGA_CENTER);
+  if (!(isActive && !following)) lastCenterRef.current = tripCenter ?? ZAMBOANGA_CENTER;
+  const liveCenter = lastCenterRef.current;
+  const liveZoom = tripCenter ? 15 : ZAMBOANGA_ZOOM;
 
   // GeoJSON order: [lng, lat]
   const routeCoords: [number, number][] =
@@ -165,8 +180,9 @@ export default function MapScreen() {
         center={liveCenter}
         zoom={liveZoom}
         theme={mapTheme}
-        followUserLocation={isActive}
+        followUserLocation={followRider}
         onCameraChanged={(state) => {
+          if (state.gestures.isGestureActive && followRider) setFollowing(false);
           setCurrentZoom(state.properties.zoom);
           const { ne, sw } = state.properties.bounds;
           setVisibleBounds({
@@ -181,8 +197,12 @@ export default function MapScreen() {
         }}
       >
         <MapUserLocation showHeading />
-        <MapControls position="top-right" showLocate showZoom className="mt-[80px]" />
-        
+        <MapControls position="top-right" showZoom className="mt-[80px]" />
+        <LocateButton
+          bottom={insets.bottom + 158}
+          hidden={selectedHazard !== null}
+          onLocated={resumeFollowing}
+        />
         <MapHeatmap data={heatmapData} visible={showHeatmap} />
         <MapFeatureToggles 
           showHeatmap={showHeatmap} 
@@ -345,6 +365,64 @@ export default function MapScreen() {
   );
 }
 
+/**
+ * "Go to my location" button (like Google Maps): flies the map back to the rider's blue dot.
+ * Uses the last known position first so it moves right away. Render inside <Map>.
+ */
+function LocateButton({ bottom, hidden, onLocated }: { bottom: number; hidden: boolean; onLocated: () => void }) {
+  const { cameraRef, isLoaded, registerOverlay, unregisterOverlay } = useMap();
+  const overlayId = useId();
+  const [locating, setLocating] = useState(false);
+
+  const locate = useCallback(async () => {
+    setLocating(true);
+    try {
+      let { granted } = await Location.getForegroundPermissionsAsync();
+      if (!granted) ({ granted } = await Location.requestForegroundPermissionsAsync());
+      if (!granted || !(await Location.hasServicesEnabledAsync())) {
+        Toast.show({ type: 'info', text1: 'Turn on location to find you.' });
+        return;
+      }
+      const position =
+        (await Location.getLastKnownPositionAsync({ maxAge: 60_000 })) ??
+        (await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }));
+      cameraRef.current?.flyTo({
+        center: [position.coords.longitude, position.coords.latitude],
+        zoom: 16,
+        duration: 1000,
+      });
+      onLocated();
+    } catch {
+      Toast.show({ type: 'error', text1: 'Could not find your location. Try again.' });
+    } finally {
+      setLocating(false);
+    }
+  }, [cameraRef, onLocated]);
+
+  const button = useMemo(() => (
+    hidden ? null : (
+      <TouchableOpacity
+        style={[styles.featureBtn, { position: 'absolute', right: 16, bottom, width: 48, height: 48, borderRadius: 24 }]}
+        onPress={locate}
+        disabled={locating}
+        accessibilityLabel="Go to my location"
+      >
+        {locating
+          ? <ActivityIndicator size="small" color="#2563EB" />
+          : <Ionicons name="locate" size={24} color="#2563EB" />}
+      </TouchableOpacity>
+    )
+  ), [hidden, bottom, locate, locating]);
+
+  useEffect(() => {
+    if (isLoaded && button) registerOverlay(overlayId, button);
+    else unregisterOverlay(overlayId);
+    return () => unregisterOverlay(overlayId);
+  }, [isLoaded, button, overlayId, registerOverlay, unregisterOverlay]);
+
+  return null;
+}
+
 function MapFeatureToggles({ showHeatmap, setShowHeatmap, showBarangays, setShowBarangays, onSearchPress, mapTheme, setMapTheme, insets }: any) {
   const { cameraRef, isLoaded, registerOverlay, unregisterOverlay, theme: currentTheme } = useMap();
   const [is3D, setIs3D] = useState(false);
@@ -382,7 +460,7 @@ function MapFeatureToggles({ showHeatmap, setShowHeatmap, showBarangays, setShow
       <TouchableOpacity
         style={styles.featureBtn}
         onPress={onSearchPress}
-        accessibilityLabel="Search coordinates"
+        accessibilityLabel="Search a place or coordinates"
       >
         <Ionicons name="search-outline" size={20} color="#444" />
       </TouchableOpacity>

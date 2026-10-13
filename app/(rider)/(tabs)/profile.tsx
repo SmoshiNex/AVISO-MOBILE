@@ -18,6 +18,8 @@ import { useThemeColor } from '@/hooks/use-theme-color';
 import { useThemePreferenceContext } from '@/contexts/theme-context';
 import type { ThemePreference } from '@/hooks/use-theme-preference';
 import { api } from '@/lib/api-client';
+import { clearRiderData, countUnsyncedRiderData } from '@/lib/local-db';
+import { syncPendingData } from '@/lib/sync-service';
 import type { User } from '@/types';
 import { styles } from '@/styles/profile.style';
 
@@ -95,6 +97,23 @@ export default function ProfileScreen() {
     }
   };
 
+  // Empties the phone's copy so the next account on this phone doesn't see (or upload) this rider's data.
+  const finishLogout = async () => {
+    setLoggingOut(true);
+    try {
+      await clearRiderData().catch(() => {});
+      await api.delete('/rider/auth/logout').catch(() => {});
+      await Promise.all([
+        SecureStore.deleteItemAsync('rider_token'),
+        SecureStore.deleteItemAsync('rider_user'),
+        SecureStore.deleteItemAsync('rider_code'),
+      ]);
+      router.replace('/(auth)/login');
+    } finally {
+      setLoggingOut(false);
+    }
+  };
+
   const handleLogout = () => {
     Alert.alert('Log Out', 'Are you sure you want to log out?', [
       { text: 'Cancel', style: 'cancel' },
@@ -103,17 +122,30 @@ export default function ProfileScreen() {
         style: 'destructive',
         onPress: async () => {
           setLoggingOut(true);
-          try {
-            await api.delete('/rider/auth/logout').catch(() => {});
-            await Promise.all([
-              SecureStore.deleteItemAsync('rider_token'),
-              SecureStore.deleteItemAsync('rider_user'),
-              SecureStore.deleteItemAsync('rider_code'),
-            ]);
-            router.replace('/(auth)/login');
-          } finally {
-            setLoggingOut(false);
+          // Upload anything still pending to this account first.
+          await syncPendingData().catch(() => {});
+          const pending = await countUnsyncedRiderData().catch(() => ({ trips: 0, detections: 0 }));
+          setLoggingOut(false);
+
+          if (pending.trips === 0 && pending.detections === 0) {
+            await finishLogout();
+            return;
           }
+
+          const parts = [
+            pending.trips > 0 ? `${pending.trips} ${pending.trips === 1 ? 'ride' : 'rides'}` : null,
+            pending.detections > 0
+              ? `${pending.detections} ${pending.detections === 1 ? 'detection' : 'detections'}`
+              : null,
+          ].filter(Boolean);
+          Alert.alert(
+            'Not uploaded yet',
+            `${parts.join(' and ')} ${pending.trips + pending.detections === 1 ? "hasn't" : "haven't"} been uploaded yet. Connect to the internet first so you don't lose them.`,
+            [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Log Out Anyway', style: 'destructive', onPress: finishLogout },
+            ],
+          );
         },
       },
     ]);
