@@ -3,7 +3,6 @@ import {
     View,
     Text,
     TouchableOpacity,
-    Pressable,
     StyleSheet,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
@@ -663,8 +662,9 @@ export default function CameraScreen() {
 
             {/* Manual SOS: hold to open the same emergency countdown a crash opens. Above the
                 "Ready to ride?" overlay so it works whether or not a ride is running. */}
-            <Pressable
-                style={({ pressed }) => [styles.sosBtn, pressed && styles.sosBtnPressed]}
+            <TouchableOpacity
+                style={styles.sosBtn}
+                activeOpacity={0.6}
                 delayLongPress={SOS_HOLD_MS}
                 onLongPress={() => router.push("/(rider)/emergency-alert")}
                 onPress={() => Toast.show({ type: "info", text1: "Hold the SOS button to call for help." })}
@@ -672,7 +672,7 @@ export default function CameraScreen() {
                 accessibilityLabel="SOS. Press and hold to send an emergency alert"
             >
                 <Text style={styles.sosBtnText}>SOS</Text>
-            </Pressable>
+            </TouchableOpacity>
 
             {/* Last, so it stays tappable above the "Ready to ride?" overlay */}
             <SafeAreaView

@@ -144,7 +144,6 @@ export const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 6,
   },
-  sosBtnPressed: { backgroundColor: '#991B1B', transform: [{ scale: 0.94 }] },
   sosBtnText: { color: '#fff', fontSize: 16, fontWeight: '800', letterSpacing: 1 },
   sessionBar: {
     position: 'absolute',
