@@ -1,6 +1,7 @@
 import * as SMS from 'expo-sms';
 import { getActiveContactNumbers, saveCrashEvent, markCrashEventSynced } from './local-db';
 import { api } from './api-client';
+import type { SosTriggerType } from '@/types';
 
 export type SOSPayload = {
   latitude: number;
@@ -8,6 +9,8 @@ export type SOSPayload = {
   lastHazardType?: string;
   /** Crash id from the IoT unit when the SOS started from a unit crash. */
   eventUid?: string;
+  /** How the SOS started; shown to admins and sets the SMS wording. */
+  triggerType?: SosTriggerType;
 };
 
 /**
@@ -25,7 +28,7 @@ export type SOSPayload = {
  *    sends) once connectivity returns.
  */
 export async function sendEmergencyAlert(payload: SOSPayload): Promise<boolean> {
-  const { latitude, longitude, lastHazardType, eventUid } = payload;
+  const { latitude, longitude, lastHazardType, eventUid, triggerType } = payload;
   const triggeredAt = new Date().toISOString();
 
   // Step 1 — persist locally before anything else
@@ -38,6 +41,7 @@ export async function sendEmergencyAlert(payload: SOSPayload): Promise<boolean> 
     synced: false,
     attempts: 0,
     event_uid: eventUid,
+    trigger_type: triggerType,
   });
 
   // Step 2 — PRIMARY: backend dispatches real SMS automatically via SkySMS.
@@ -51,6 +55,7 @@ export async function sendEmergencyAlert(payload: SOSPayload): Promise<boolean> 
       triggered_at: triggeredAt,
       // Lets the server merge this with the unit's own backup report.
       ...(eventUid && { event_uid: eventUid }),
+      ...(triggerType && { trigger_type: triggerType }),
     });
     await markCrashEventSynced(crashEventId);
     return true; // SMS dispatched server-side — no composer needed.

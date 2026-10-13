@@ -12,6 +12,7 @@ import { useIot } from '@/contexts/iot-context';
 import { generateJarvisAudio } from '@/lib/openai-tts';
 import { SOS_TEXT, SOS_CACHE_KEY } from '@/constants/sos';
 import { styles } from '@/styles/emergency-alert.style';
+import type { SosTriggerType } from '@/types';
 
 const COUNTDOWN_SECONDS = 15;
 const SOS_COOLDOWN_MS = 60_000;
@@ -35,8 +36,10 @@ export default function EmergencyAlertScreen() {
   const isSentRef = useRef(false);
   const isSendingRef = useRef(false);
   const { isActive, endTrip } = useTripContext();
-  // Set when the countdown was started by the IoT unit's crash detection.
-  const { eventId } = useLocalSearchParams<{ eventId?: string }>();
+  // eventId: set when the countdown was started by the IoT unit's crash detection.
+  // trigger: how the SOS started (SOS button, IoT unit crash or phone backup check).
+  const { eventId, trigger } = useLocalSearchParams<{ eventId?: string; trigger?: SosTriggerType }>();
+  const triggerType: SosTriggerType | undefined = trigger ?? (eventId ? 'crash_iot' : undefined);
   const { cancelCrash, confirmSosSent } = useIot();
 
   // Pulse ring animation — permanent cosmetic loop
@@ -102,7 +105,9 @@ export default function EmergencyAlertScreen() {
             clearInterval(intervalRef.current);
             intervalRef.current = null;
           }
-          runTrigger();
+          // Through the ref: this callback is created once ([] deps), so calling
+          // runTrigger directly would send the params of the first render.
+          runTriggerRef.current();
         }
       }, 1000);
 
@@ -140,6 +145,7 @@ export default function EmergencyAlertScreen() {
         latitude: location?.coords.latitude ?? 6.9214,
         longitude: location?.coords.longitude ?? 122.079,
         eventUid: eventId,
+        triggerType,
       });
       // The server has it: the unit can skip its own backup report.
       if (eventId && delivered) confirmSosSent(eventId);
@@ -157,6 +163,10 @@ export default function EmergencyAlertScreen() {
       setSending(false);
     }
   };
+
+  // Always the latest runTrigger, so the countdown's auto-send uses this SOS's eventId and trigger.
+  const runTriggerRef = useRef(runTrigger);
+  runTriggerRef.current = runTrigger;
 
   const handleCancel = () => {
     // Stops the unit's alarm and its backup SOS.

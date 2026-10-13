@@ -3,12 +3,10 @@ import {
   View,
   Text,
   TouchableOpacity,
-  ScrollView,
   TextInput,
   ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
 } from 'react-native';
+import { KeyboardForm } from '@/components/KeyboardForm';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useFocusEffect } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
@@ -97,8 +95,7 @@ export default function PersonalInformationScreen() {
         <Text style={{ fontSize: 17, fontWeight: '700', color: text, flex: 1 }}>Personal Information</Text>
       </View>
 
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
-        <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }} keyboardShouldPersistTaps="handled">
+      <KeyboardForm contentContainerStyle={{ padding: 16, gap: 12 }}>
           <View style={{ backgroundColor: card, borderRadius: 12, borderWidth: 1, borderColor: border, overflow: 'hidden' }}>
             {FIELDS.map((field, index) => {
               const value = (user?.[field.key] as string) ?? '';
@@ -160,8 +157,7 @@ export default function PersonalInformationScreen() {
           </View>
 
           <View style={{ height: 32 }} />
-        </ScrollView>
-      </KeyboardAvoidingView>
+      </KeyboardForm>
     </SafeAreaView>
   );
 }

@@ -2,16 +2,14 @@ import { useState } from 'react';
 import Toast from 'react-native-toast-message';
 import {
   ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
   Pressable,
-  ScrollView,
   StatusBar,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
+import { KeyboardForm } from '@/components/KeyboardForm';
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -75,15 +73,7 @@ export default function ForgotPasswordResetScreen() {
     <View style={[styles.root, { backgroundColor: background }]}>
       <StatusBar barStyle={colorScheme === 'dark' ? 'light-content' : 'dark-content'} backgroundColor={background} />
       <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
-        <KeyboardAvoidingView
-          style={styles.flex}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        >
-          <ScrollView
-            contentContainerStyle={styles.scroll}
-            keyboardShouldPersistTaps="handled"
-            showsVerticalScrollIndicator={false}
-          >
+        <KeyboardForm contentContainerStyle={styles.scroll}>
             <View style={styles.steps}>
               {[1, 2, 3].map((n) => (
                 <View key={n} style={[styles.stepDot, styles.stepDotActive, { backgroundColor: primary }]} />
@@ -187,8 +177,7 @@ export default function ForgotPasswordResetScreen() {
                 )}
               </Pressable>
             </View>
-          </ScrollView>
-        </KeyboardAvoidingView>
+        </KeyboardForm>
       </SafeAreaView>
     </View>
   );

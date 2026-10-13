@@ -2,16 +2,14 @@ import { useState } from "react";
 import {
     ActivityIndicator,
     Image,
-    KeyboardAvoidingView,
-    Platform,
     Pressable,
-    ScrollView,
     StatusBar,
     StyleSheet,
     Text,
     TextInput,
     View,
 } from "react-native";
+import { KeyboardForm } from "@/components/KeyboardForm";
 import { router } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { api } from "@/lib/api-client";
@@ -74,15 +72,7 @@ export default function ForgotPasswordScreen() {
         <View style={[styles.root, { backgroundColor: background }]}>
             <StatusBar barStyle={colorScheme === "dark" ? "light-content" : "dark-content"} backgroundColor={background} />
             <SafeAreaView style={styles.safeArea} edges={["top", "bottom"]}>
-                <KeyboardAvoidingView
-                    style={styles.flex}
-                    behavior={Platform.OS === "ios" ? "padding" : "height"}
-                >
-                    <ScrollView
-                        contentContainerStyle={styles.scroll}
-                        keyboardShouldPersistTaps="handled"
-                        showsVerticalScrollIndicator={false}
-                    >
+                <KeyboardForm contentContainerStyle={styles.scroll}>
                         <View style={styles.brand}>
                             <Image
                                 source={require("../../assets/images/logo.png")}
@@ -171,8 +161,7 @@ export default function ForgotPasswordScreen() {
                                 </Text>
                             </Pressable>
                         </View>
-                    </ScrollView>
-                </KeyboardAvoidingView>
+                </KeyboardForm>
             </SafeAreaView>
         </View>
     );

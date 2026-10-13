@@ -7,9 +7,8 @@ import {
   Modal,
   TextInput,
   ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
 } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Contacts from 'expo-contacts';
@@ -278,11 +277,12 @@ export default function EmergencyContactsScreen() {
         animationType="slide"
         transparent
         onRequestClose={() => setShowAddModal(false)}
+        // Edge-to-edge like the rest of the app, so the keyboard library measures it correctly.
+        statusBarTranslucent
+        navigationBarTranslucent
       >
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          style={{ flex: 1 }}
-        >
+        {/* Lifts the sheet above the keyboard so every field and Save stay visible. */}
+        <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
           <View style={styles.modalBackdrop}>
             <View style={[styles.modalSheet, { backgroundColor: card }]}>
               <View style={styles.modalHandle} />

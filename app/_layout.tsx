@@ -8,6 +8,7 @@ import {
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import Toast from "react-native-toast-message";
+import { KeyboardProvider } from "react-native-keyboard-controller";
 import { useFonts } from "expo-font";
 import * as SplashScreen from "expo-splash-screen";
 import * as SecureStore from "expo-secure-store";
@@ -63,10 +64,14 @@ export default function RootLayout() {
 
     if (!fontsLoaded) return null;
 
+    // KeyboardProvider: lets screens keep the focused input above the keyboard
+    // (the app is edge-to-edge, so Android no longer resizes the window for it).
     return (
-        <ThemePreferenceProvider>
-            <RootLayoutNav />
-        </ThemePreferenceProvider>
+        <KeyboardProvider>
+            <ThemePreferenceProvider>
+                <RootLayoutNav />
+            </ThemePreferenceProvider>
+        </KeyboardProvider>
     );
 }
 

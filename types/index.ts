@@ -132,7 +132,11 @@ export type LocalCrashEvent = {
   attempts: number;
   /** Crash id from the IoT unit, when the SOS started from a unit crash. */
   event_uid?: string;
+  /** How the SOS started: SOS button, IoT unit crash or phone backup crash check. */
+  trigger_type?: SosTriggerType;
 };
+
+export type SosTriggerType = 'manual' | 'crash_iot' | 'crash_phone';
 
 // Local SQLite emergency contact (with local-only is_active toggle)
 export type LocalEmergencyContact = {

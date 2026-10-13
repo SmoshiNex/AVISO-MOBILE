@@ -666,7 +666,7 @@ export default function CameraScreen() {
                 style={styles.sosBtn}
                 activeOpacity={0.6}
                 delayLongPress={SOS_HOLD_MS}
-                onLongPress={() => router.push("/(rider)/emergency-alert")}
+                onLongPress={() => router.push({ pathname: "/(rider)/emergency-alert", params: { trigger: "manual" } })}
                 onPress={() => Toast.show({ type: "info", text1: "Hold the SOS button to call for help." })}
                 accessibilityRole="button"
                 accessibilityLabel="SOS. Press and hold to send an emergency alert"

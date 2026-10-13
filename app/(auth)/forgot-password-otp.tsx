@@ -2,8 +2,6 @@ import { useRef, useState, useEffect } from 'react';
 import Toast from 'react-native-toast-message';
 import {
   ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
   Pressable,
   StatusBar,
   StyleSheet,
@@ -11,6 +9,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { KeyboardForm } from '@/components/KeyboardForm';
 import { router, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { api } from '@/lib/api-client';
@@ -103,11 +102,7 @@ export default function ForgotPasswordOtpScreen() {
     <View style={[styles.root, { backgroundColor: background }]}>
       <StatusBar barStyle={colorScheme === 'dark' ? 'light-content' : 'dark-content'} backgroundColor={background} />
       <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
-        <KeyboardAvoidingView
-          style={styles.flex}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        >
-          <View style={styles.content}>
+        <KeyboardForm toolbar={false} contentContainerStyle={styles.content}>
             <View style={styles.steps}>
               {[1, 2, 3].map((n) => (
                 <View
@@ -179,8 +174,7 @@ export default function ForgotPasswordOtpScreen() {
             <Pressable onPress={() => router.back()} style={styles.backBtn}>
               <Text style={[styles.backText, { color: placeholder }]}>← Go back</Text>
             </Pressable>
-          </View>
-        </KeyboardAvoidingView>
+        </KeyboardForm>
       </SafeAreaView>
     </View>
   );
@@ -191,7 +185,7 @@ const styles = StyleSheet.create({
   safeArea: { flex: 1 },
   flex: { flex: 1 },
   content: {
-    flex: 1,
+    flexGrow: 1,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 32,

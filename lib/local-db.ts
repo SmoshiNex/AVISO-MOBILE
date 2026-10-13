@@ -1,5 +1,5 @@
 import * as SQLite from 'expo-sqlite';
-import type { LocalTrip, LocalHazardLog, LocalCrashEvent, LocalEmergencyContact, LocalRideEvent } from '@/types';
+import type { LocalTrip, LocalHazardLog, LocalCrashEvent, LocalEmergencyContact, LocalRideEvent, SosTriggerType } from '@/types';
 import { ROAD_HAZARD_TYPES } from '@/constants/hazards';
 
 let db: SQLite.SQLiteDatabase | null = null;
@@ -93,6 +93,8 @@ async function migrate(handle: SQLite.SQLiteDatabase): Promise<void> {
   const additions = [
     `ALTER TABLE crash_events ADD COLUMN attempts INTEGER DEFAULT 0`,
     `ALTER TABLE crash_events ADD COLUMN event_uid TEXT`,
+    // How the SOS started (manual / crash_iot / crash_phone), re-sent with offline retries.
+    `ALTER TABLE crash_events ADD COLUMN trigger_type TEXT`,
     // When the last GPS point of a trip was saved; ends a ride cut short by a crash at that time.
     `ALTER TABLE trips ADD COLUMN last_point_at TEXT`,
     // GPS fix at detection, kept for the prediction dataset.
@@ -439,8 +441,8 @@ export async function reconcileHazardLogSynced(
 
 export async function saveCrashEvent(event: Omit<LocalCrashEvent, 'id'>): Promise<number> {
   const result = await getDb().runAsync(
-    `INSERT INTO crash_events (latitude, longitude, last_hazard_type, triggered_at, sms_sent, synced, attempts, event_uid)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO crash_events (latitude, longitude, last_hazard_type, triggered_at, sms_sent, synced, attempts, event_uid, trigger_type)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       event.latitude,
       event.longitude,
@@ -450,6 +452,7 @@ export async function saveCrashEvent(event: Omit<LocalCrashEvent, 'id'>): Promis
       event.synced ? 1 : 0,
       event.attempts,
       event.event_uid ?? null,
+      event.trigger_type ?? null,
     ],
   );
   return result.lastInsertRowId;
@@ -629,6 +632,7 @@ function rowToCrashEvent(r: Record<string, unknown>): LocalCrashEvent {
     synced: r.synced === 1,
     attempts: (r.attempts as number | null) ?? 0,
     event_uid: (r.event_uid as string | null) ?? undefined,
+    trigger_type: (r.trigger_type as SosTriggerType | null) ?? undefined,
   };
 }
 

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { Alert, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { KeyboardForm } from '@/components/KeyboardForm';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import Toast from 'react-native-toast-message';
@@ -162,7 +163,7 @@ export default function IotDeviceScreen() {
         </View>
       </View>
 
-      <ScrollView contentContainerStyle={styles.content}>
+      <KeyboardForm contentContainerStyle={styles.content}>
         {/* Unit */}
         <View style={[styles.card, { backgroundColor: card, borderColor: border }]}>
           <Text style={[styles.cardTitle, { color: text }]}>Crash-detection unit</Text>
@@ -307,7 +308,7 @@ export default function IotDeviceScreen() {
             <Text key={step} style={[styles.step, { color: textSecondary }]}>{step}</Text>
           ))}
         </View>
-      </ScrollView>
+      </KeyboardForm>
     </SafeAreaView>
   );
 }

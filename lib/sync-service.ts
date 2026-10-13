@@ -244,6 +244,7 @@ async function syncCrashEvents(): Promise<void> {
         // alert it has already recorded instead of creating a duplicate.
         triggered_at: event.triggered_at,
         ...(event.event_uid && { event_uid: event.event_uid }),
+        ...(event.trigger_type && { trigger_type: event.trigger_type }),
       });
       await markCrashEventSynced(event.id);
     } catch (err) {

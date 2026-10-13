@@ -164,7 +164,7 @@ export function IotProvider({ children }: { children: ReactNode }) {
           if (handledCrashIds.current.has(event.id)) break;   // re-sent until acked
           handledCrashIds.current.add(event.id);
           setActiveCrashId(event.id);
-          router.push({ pathname: '/(rider)/emergency-alert', params: { eventId: event.id } });
+          router.push({ pathname: '/(rider)/emergency-alert', params: { eventId: event.id, trigger: 'crash_iot' } });
         }
         logEvent(event);
         // The 10 s normal-riding summaries would flood the recent list.

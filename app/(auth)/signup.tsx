@@ -4,7 +4,6 @@ import {
   ActivityIndicator,
   FlatList,
   Image,
-  KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
@@ -16,6 +15,8 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { KeyboardForm } from '@/components/KeyboardForm';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -125,16 +126,7 @@ export default function SignupScreen() {
     <View style={[styles.root, { backgroundColor: background }]}>
       <StatusBar barStyle={colorScheme === 'dark' ? 'light-content' : 'dark-content'} backgroundColor={background} />
       <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
-        <KeyboardAvoidingView
-          style={styles.flex}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        >
-          <ScrollView
-            contentContainerStyle={styles.scroll}
-            keyboardShouldPersistTaps="handled"
-            showsVerticalScrollIndicator={false}
-            automaticallyAdjustKeyboardInsets={true}
-          >
+        <KeyboardForm contentContainerStyle={styles.scroll}>
             <View style={styles.brand}>
               <Image
                 source={require('../../assets/images/logo.png')}
@@ -461,8 +453,7 @@ export default function SignupScreen() {
                 </Text>
               </Pressable>
             </View>
-          </ScrollView>
-        </KeyboardAvoidingView>
+        </KeyboardForm>
       </SafeAreaView>
 
       {/* Barangay picker modal */}
@@ -471,8 +462,11 @@ export default function SignupScreen() {
         animationType="slide"
         transparent
         onRequestClose={() => setShowBarangayPicker(false)}
+        statusBarTranslucent
+        navigationBarTranslucent
       >
-        <View style={pickerStyles.overlay}>
+        {/* Lifts the sheet above the keyboard so the search results stay visible. */}
+        <KeyboardAvoidingView behavior="padding" style={pickerStyles.overlay}>
           <View style={[pickerStyles.sheet, { backgroundColor: card }]}>
             <View style={[pickerStyles.header, { borderBottomColor: border }]}>
               <Text style={[pickerStyles.headerText, { color: text }]}>Select Barangay</Text>
@@ -513,7 +507,7 @@ export default function SignupScreen() {
               />
             )}
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* Terms Modal */}
