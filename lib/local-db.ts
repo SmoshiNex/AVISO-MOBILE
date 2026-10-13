@@ -506,7 +506,8 @@ export async function upsertContact(contact: LocalEmergencyContact): Promise<voi
      ON CONFLICT(id) DO UPDATE SET
        name = excluded.name,
        relationship = excluded.relationship,
-       contact_number = excluded.contact_number`,
+       contact_number = excluded.contact_number,
+       is_active = excluded.is_active`,
     [contact.id, contact.name, contact.relationship ?? null, contact.contact_number, contact.is_active ? 1 : 0],
   );
 }

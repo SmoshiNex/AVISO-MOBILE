@@ -6,7 +6,6 @@ import {
   TouchableOpacity,
   Modal,
   TextInput,
-  Switch,
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
@@ -19,7 +18,6 @@ import { useThemeColor } from '@/hooks/use-theme-color';
 import {
   getContacts,
   upsertContact,
-  setContactActive,
   deleteContact,
 } from '@/lib/local-db';
 import { api } from '@/lib/api-client';
@@ -82,7 +80,9 @@ export default function EmergencyContactsScreen() {
 
   const loadContacts = useCallback(async () => {
     try {
-      const remote: any[] = await api.get('/rider/emergency-contacts');
+      // The server's list is the real one (response shape: `{ contacts: [...] }`).
+      const res = await api.get<{ contacts?: LocalEmergencyContact[] }>('/rider/emergency-contacts');
+      const remote = res.contacts ?? [];
       for (const c of remote) {
         await upsertContact({
           id: c.id,
@@ -91,6 +91,11 @@ export default function EmergencyContactsScreen() {
           contact_number: c.contact_number,
           is_active: true,
         });
+      }
+      // Drop contacts removed on the server (e.g. from another phone).
+      const remoteIds = new Set(remote.map((c) => c.id));
+      for (const c of await getContacts()) {
+        if (!remoteIds.has(c.id)) await deleteContact(c.id);
       }
     } catch {
       // Offline — use local cache
@@ -165,13 +170,6 @@ export default function EmergencyContactsScreen() {
     }
   };
 
-  const handleToggleActive = async (contact: LocalEmergencyContact) => {
-    await setContactActive(contact.id, !contact.is_active);
-    setContacts((prev) =>
-      prev.map((c) => (c.id === contact.id ? { ...c, is_active: !c.is_active } : c)),
-    );
-  };
-
   const handleDelete = async (contact: LocalEmergencyContact) => {
     Toast.show({ type: 'info', text1: 'Deleting...' });
     try {
@@ -207,13 +205,6 @@ export default function EmergencyContactsScreen() {
         ) : null}
       </View>
       <View style={styles.contactActions}>
-        <Switch
-          value={item.is_active}
-          onValueChange={() => handleToggleActive(item)}
-          trackColor={{ true: primary, false: '#D1D5DB' }}
-          thumbColor="#fff"
-          style={{ transform: [{ scale: 0.85 }] }}
-        />
         <TouchableOpacity
           onPress={() => handleDelete(item)}
           style={styles.deleteBtn}
@@ -235,20 +226,28 @@ export default function EmergencyContactsScreen() {
 
   return (
     <SafeAreaView edges={['top']} style={[styles.container, { backgroundColor: background }]}>
-      {/* Header — single "+" button */}
+      {/* Header — the "+" shows once there is a contact; an empty list has its own Add button */}
       <View style={[styles.header, { borderBottomColor: border }]}>
         <Text style={[styles.headerTitle, { color: text }]}>Emergency Contacts</Text>
-        <TouchableOpacity onPress={() => { resetAddForm(); setShowAddModal(true); }} style={styles.headerBtn}>
-          <Ionicons name="add-circle-outline" size={22} color={primary} />
-        </TouchableOpacity>
+        {contacts.length > 0 && (
+          <TouchableOpacity
+            onPress={() => { resetAddForm(); setShowAddModal(true); }}
+            style={styles.headerBtn}
+            accessibilityLabel="Add emergency contact"
+          >
+            <Ionicons name="add-circle-outline" size={22} color={primary} />
+          </TouchableOpacity>
+        )}
       </View>
 
-      <View style={[styles.infoBar, { backgroundColor: backgroundElement }]}>
-        <Ionicons name="information-circle-outline" size={14} color={textSecondary} />
-        <Text style={[styles.infoText, { color: textSecondary }]}>
-          Toggle to enable/disable SMS for each contact
-        </Text>
-      </View>
+      {contacts.length > 0 && (
+        <View style={[styles.infoBar, { backgroundColor: backgroundElement }]}>
+          <Ionicons name="information-circle-outline" size={14} color={textSecondary} />
+          <Text style={[styles.infoText, { color: textSecondary }]}>
+            All contacts below receive your SOS SMS
+          </Text>
+        </View>
+      )}
 
       <FlatList
         data={contacts}

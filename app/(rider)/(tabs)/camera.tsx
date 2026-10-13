@@ -3,6 +3,7 @@ import {
     View,
     Text,
     TouchableOpacity,
+    Pressable,
     StyleSheet,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
@@ -54,6 +55,8 @@ const SOURCE_OPTIONS: { mode: SourceMode; label: string; icon: keyof typeof Ioni
 const alertGate = new AlertGate();
 // Popups follow their object: shown at least this long, at most this long,
 // and closed this long after the object leaves the video.
+/** How long the SOS button must be held, so a bump or stray touch can't send an alert. */
+const SOS_HOLD_MS = 1500;
 const FOLLOW_MIN_MS = 2500;
 const FOLLOW_MAX_MS = 8000;
 const FOLLOW_LOST_CLOSE_MS = 700;
@@ -657,6 +660,19 @@ export default function CameraScreen() {
                     </View>
                 </View>
             )}
+
+            {/* Manual SOS: hold to open the same emergency countdown a crash opens. Above the
+                "Ready to ride?" overlay so it works whether or not a ride is running. */}
+            <Pressable
+                style={({ pressed }) => [styles.sosBtn, pressed && styles.sosBtnPressed]}
+                delayLongPress={SOS_HOLD_MS}
+                onLongPress={() => router.push("/(rider)/emergency-alert")}
+                onPress={() => Toast.show({ type: "info", text1: "Hold the SOS button to call for help." })}
+                accessibilityRole="button"
+                accessibilityLabel="SOS. Press and hold to send an emergency alert"
+            >
+                <Text style={styles.sosBtnText}>SOS</Text>
+            </Pressable>
 
             {/* Last, so it stays tappable above the "Ready to ride?" overlay */}
             <SafeAreaView
