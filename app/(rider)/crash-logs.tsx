@@ -17,7 +17,7 @@ import { useThemeColor } from '@/hooks/use-theme-color';
 import { api } from '@/lib/api-client';
 import { countPendingRideEvents } from '@/lib/local-db';
 import { MAX_RIDE_EVENT_ATTEMPTS, syncPendingData } from '@/lib/sync-service';
-import type { IotEventType, MinAvgMax, RiderEventLog, RiderEventTypeStats } from '@/types';
+import type { EmergencyAlertStatus, IotEventType, MinAvgMax, RiderEventLog, RiderEventTypeStats } from '@/types';
 import { styles } from '@/styles/crash-logs.style';
 
 type Filter = IotEventType | 'all';
@@ -38,6 +38,20 @@ const fmt = (v: string | null, digits: number, unit: string) =>
 
 const range = (r: MinAvgMax, unit: string) =>
   r.max === null ? '-' : `${r.min} / ${r.avg} / ${r.max}${unit}`;
+
+/** How the SOS raised by this crash went, e.g. "Responded by ZCDRRMO · Resolved – Treated on site". */
+const responseText = (r: EmergencyAlertStatus): string => {
+  const by = r.agency_label ? `Responded by ${r.agency_label}` : null;
+  if (r.status === 'resolved') {
+    const end = r.outcome_label ? `Resolved – ${r.outcome_label}` : 'Resolved';
+    const at = r.resolved_at ? ` at ${new Date(r.resolved_at).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' })}` : '';
+    return [by, end + at].filter(Boolean).join(' · ');
+  }
+  if (r.status === 'acknowledged') {
+    return [by, r.on_scene_at ? 'Responders arrived' : 'Help on the way'].filter(Boolean).join(' · ');
+  }
+  return 'SOS sent – waiting for admin';
+};
 
 /**
  * The rider's crash-detection log: every classification their IoT unit made
@@ -228,6 +242,11 @@ export default function CrashLogsScreen() {
             {new Date(item.detected_at).toLocaleString('en-PH')}
             {item.area ? ` · ${item.area}` : ''}
           </Text>
+          {item.emergency_response && (
+            <Text style={[styles.rowMeta, { color: text }]}>
+              <Ionicons name="medkit-outline" size={12} color={text} /> {responseText(item.emergency_response)}
+            </Text>
+          )}
         </View>
       </View>
     );

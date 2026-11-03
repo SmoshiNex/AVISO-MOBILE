@@ -5,6 +5,15 @@ import android.os.SystemClock
 import android.util.Log
 import org.json.JSONArray
 import org.json.JSONObject
+import org.opencv.android.OpenCVLoader
+import org.opencv.core.Core
+import org.opencv.core.CvType
+import org.opencv.core.Mat
+import org.opencv.core.Rect
+import org.opencv.core.Scalar
+import org.opencv.core.Size
+import org.opencv.imgproc.Imgproc
+import org.tensorflow.lite.DataType
 import org.tensorflow.lite.Interpreter
 import org.tensorflow.lite.gpu.CompatibilityList
 import org.tensorflow.lite.gpu.GpuDelegate
@@ -26,6 +35,7 @@ import kotlin.math.roundToInt
  * Model contract (checked against the exported file):
  *  - input  float32 [1, 3, H, W] (channels first) or [1, H, W, 3], RGB scaled to 0..1, letterboxed with gray 114.
  *    H and W may differ (e.g. 544x960 for a 16:9 camera), so the frame is fitted to both separately.
+ *    FP16 exports keep a float32 input (the weights alone are half precision).
  *  - output float32 [1, 4 + classes, N]: cx, cy, w, h (normalized 0..1) + one score per class, no NMS
  *
  * Boxes are returned top-left x, y, w, h as fractions of the source frame, matching classify() in the app.
@@ -95,6 +105,15 @@ class YoloDetector private constructor(context: Context) {
     }
     private var rowCaches: Array<RowCache> = emptyArray()
 
+    // OpenCV letterbox (same cv2.resize the model was trained with). Reused every frame; detector thread only.
+    private var useOpenCv = openCvReady
+    private var cvSource: Mat? = null
+    private var cvResized: Mat? = null
+    private var cvLetterbox: Mat? = null
+    private var cvFloat: Mat? = null
+    private val cvPlanes = ArrayList<Mat>(3)
+    private var cvPlane = FloatArray(0)
+
     init {
         val modelBytes = context.assets.open(MODEL_ASSET).use { it.readBytes() }
         val model = ByteBuffer.allocateDirect(modelBytes.size).order(ByteOrder.nativeOrder()).apply {
@@ -132,6 +151,15 @@ class YoloDetector private constructor(context: Context) {
         interpreter = created
         delegateName = if (delegate != null) "GPU" else "CPU"
 
+        val inType = interpreter.getInputTensor(0).dataType()
+        val outType = interpreter.getOutputTensor(0).dataType()
+        if (inType != DataType.FLOAT32 || outType != DataType.FLOAT32) {
+            close()
+            throw IllegalStateException(
+                "Model input/output must be float32 (got $inType / $outType). Re-export with float32 input."
+            )
+        }
+
         val inShape = interpreter.getInputTensor(0).shape()
         channelsFirst = inShape[1] == 3
         inputH = if (channelsFirst) inShape[2] else inShape[1]
@@ -152,7 +180,8 @@ class YoloDetector private constructor(context: Context) {
             TAG,
             "Loaded model on $delegateName in ${SystemClock.elapsedRealtime() - startMs} ms " +
                 "(thread ${Thread.currentThread().name}): input ${inShape.contentToString()}, " +
-                "output ${outShape.contentToString()}, $numClasses classes"
+                "output ${outShape.contentToString()}, $numClasses classes, $MODEL_VERSION, " +
+                "prep ${if (useOpenCv) "OpenCV" else "Kotlin"}"
         )
     }
 
@@ -197,6 +226,17 @@ class YoloDetector private constructor(context: Context) {
     fun close() {
         interpreter.close()
         gpuDelegate?.close()
+        releaseOpenCvMats()
+    }
+
+    private fun releaseOpenCvMats() {
+        listOf(cvSource, cvResized, cvLetterbox, cvFloat).forEach { it?.release() }
+        cvPlanes.forEach { it.release() }
+        cvPlanes.clear()
+        cvSource = null
+        cvResized = null
+        cvLetterbox = null
+        cvFloat = null
     }
 
     private fun fillInput(pixels: ByteArray, width: Int, height: Int, bpp: Int, rowStride: Int) {
@@ -217,8 +257,22 @@ class YoloDetector private constructor(context: Context) {
             yWeight = FloatArray(scaledH) { sy[it] - y0Lut[it] }
             rowCaches = Array(PREP_THREADS) { RowCache(scaledW) }
             inputArray.fill(PAD_VALUE)
+            releaseOpenCvMats()
             lastFrameW = width
             lastFrameH = height
+        }
+
+        if (useOpenCv) {
+            try {
+                fillInputOpenCv(pixels, width, height, bpp, rowStride)
+                return
+            } catch (e: Throwable) {
+                // Fall back to the Kotlin resize for the rest of this session.
+                Log.w(TAG, "OpenCV prep failed, using the Kotlin resize: ${e.message}")
+                useOpenCv = false
+                releaseOpenCvMats()
+                inputArray.fill(PAD_VALUE)
+            }
         }
 
         // Each worker fills its own band of output rows; bands share no memory, so no locking is needed.
@@ -230,6 +284,56 @@ class YoloDetector private constructor(context: Context) {
             else Callable { fillRows(pixels, bpp, rowStride, from, to, rowCaches[w]) }
         }
         for (f in PREP_POOL.invokeAll(jobs)) f.get()
+    }
+
+    /**
+     * Letterbox with OpenCV: cv2.resize(INTER_LINEAR) into the centre of a gray-114 canvas, then 0..1 floats.
+     * Same scale and padding as the Kotlin path, so the box mapping in decode() is unchanged.
+     */
+    private fun fillInputOpenCv(pixels: ByteArray, width: Int, height: Int, bpp: Int, rowStride: Int) {
+        require(bpp == 3 || bpp == 4) { "unsupported $bpp bytes per pixel" }
+        require(rowStride % bpp == 0) { "row stride $rowStride is not a whole number of pixels" }
+        val strideW = rowStride / bpp
+        val srcType = if (bpp == 4) CvType.CV_8UC4 else CvType.CV_8UC3
+
+        cvSource?.let { if (it.cols() != strideW || it.type() != srcType) releaseOpenCvMats() }
+        val source = cvSource ?: Mat(height, strideW, srcType).also { cvSource = it }
+        val resized = cvResized ?: Mat(scaledH, scaledW, srcType).also { cvResized = it }
+        val letterbox = cvLetterbox ?: Mat(inputH, inputW, CvType.CV_8UC3, Scalar(114.0, 114.0, 114.0))
+            .also { cvLetterbox = it }
+        val floats = cvFloat ?: Mat().also { cvFloat = it }
+
+        // The last row may come without its padding bytes.
+        source.put(0, 0, pixels, 0, minOf(pixels.size, height * rowStride))
+        val frame = if (strideW == width) source else source.colRange(0, width)
+        val roi = letterbox.submat(Rect(padX, padY, scaledW, scaledH))
+        try {
+            if (bpp == 3) {
+                Imgproc.resize(frame, roi, Size(scaledW.toDouble(), scaledH.toDouble()), 0.0, 0.0, Imgproc.INTER_LINEAR)
+            } else {
+                Imgproc.resize(frame, resized, Size(scaledW.toDouble(), scaledH.toDouble()), 0.0, 0.0, Imgproc.INTER_LINEAR)
+                Imgproc.cvtColor(resized, roi, Imgproc.COLOR_RGBA2RGB)
+            }
+        } finally {
+            roi.release()
+            if (frame !== source) frame.release()
+        }
+        letterbox.convertTo(floats, CvType.CV_32FC3, 1.0 / 255.0)
+
+        if (!channelsFirst) {
+            floats.get(0, 0, inputArray)
+            return
+        }
+        val plane = inputW * inputH
+        if (cvPlane.size != plane) cvPlane = FloatArray(plane)
+        // split() hands back new Mats every call: free the previous ones first.
+        cvPlanes.forEach { it.release() }
+        cvPlanes.clear()
+        Core.split(floats, cvPlanes)
+        for (c in 0 until 3) {
+            cvPlanes[c].get(0, 0, cvPlane)
+            System.arraycopy(cvPlane, 0, inputArray, c * plane, plane)
+        }
     }
 
     private fun fillRows(pixels: ByteArray, bpp: Int, rowStride: Int, from: Int, to: Int, cache: RowCache) {
@@ -356,7 +460,7 @@ class YoloDetector private constructor(context: Context) {
         private const val TAG = "YoloDetector"
         private const val MODEL_ASSET = "aviso-yolov8.tflite"
         /** Which exported model is bundled in assets; shown on the camera screen. Update when the file changes. */
-        const val MODEL_VERSION = "v6-960x544-fp32"
+        const val MODEL_VERSION = "v7-960x544-fp32"
         /**
          * Weakest detection passed to the app. Weak but steady objects still count as evidence for
          * "possible" warnings; boxes are only drawn from [DRAW_THRESHOLD].
@@ -368,6 +472,13 @@ class YoloDetector private constructor(context: Context) {
         private const val MAX_DETECTIONS = 100
         private const val PAD_VALUE = 114f / 255f
         private val BYTE_TO_FLOAT = FloatArray(256) { it / 255f }
+
+        /** OpenCV does the letterbox when it loads; otherwise the Kotlin resize below is used. */
+        private val openCvReady: Boolean by lazy {
+            val ok = try { OpenCVLoader.initLocal() } catch (e: Throwable) { false }
+            if (!ok) Log.w(TAG, "OpenCV not available; using the Kotlin resize")
+            ok
+        }
 
         /** Rows of the frame are shrunk on this many CPU cores in parallel. */
         private const val PREP_THREADS = 4

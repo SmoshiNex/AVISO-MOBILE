@@ -222,6 +222,25 @@ export type RiderEventLog = {
   gyro_peak_dps: string | null;
   tilt_deg: string | null;
   detected_at: string;
+  /** For a crash that raised an SOS: who responded and how it ended. */
+  emergency_response?: EmergencyAlertStatus | null;
+};
+
+/**
+ * The rider's view of an SOS once it reached the admin (GET /rider/emergency/latest).
+ * `acknowledged` means the admin dispatched help. No admin or responder names.
+ */
+export type EmergencyAlertStatus = {
+  id: number;
+  status: 'pending' | 'acknowledged' | 'resolved' | string;
+  triggered_at: string | null;
+  dispatched_at: string | null;
+  agency_label: string | null;
+  /** null = unknown, 61 = more than 1 hour. */
+  eta_minutes: number | null;
+  on_scene_at: string | null;
+  outcome_label: string | null;
+  resolved_at: string | null;
 };
 
 export type MinAvgMax = { min: number | null; avg: number | null; max: number | null };

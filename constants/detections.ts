@@ -24,6 +24,7 @@ export const VOICE_ALERT_PRIORITY: Record<string, number> = {
   'sign:no_left_turn':       4,
   'Traffic Light Green':     5,
   'sign:no_parking':         5,
+  'sign:fire_hydrant':       5,
   'sign:other':              6,
 };
 export const DEFAULT_VOICE_PRIORITY = 5;

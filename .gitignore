@@ -58,3 +58,6 @@ AGENTS.md
 # Markdown files — keep local only, README is the only exception
 *.md
 !README.md
+
+# graphify knowledge graph (local only)
+graphify-out/

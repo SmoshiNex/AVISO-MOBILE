@@ -1,7 +1,7 @@
 import * as SMS from 'expo-sms';
 import { getActiveContactNumbers, saveCrashEvent, markCrashEventSynced } from './local-db';
 import { api } from './api-client';
-import type { SosTriggerType } from '@/types';
+import type { EmergencyAlertStatus, SosTriggerType } from '@/types';
 
 export type SOSPayload = {
   latitude: number;
@@ -102,4 +102,18 @@ export async function canSendSOS(): Promise<boolean> {
     getActiveContactNumbers(),
   ]);
   return smsAvailable && contactNumbers.length > 0;
+}
+
+/** Status of the rider's own latest SOS (help dispatched, on scene, resolved), or null. */
+export async function getLatestEmergencyAlert(): Promise<EmergencyAlertStatus | null> {
+  const res = await api.get<{ success: boolean; data: EmergencyAlertStatus | null }>('/rider/emergency/latest');
+  return res.data ?? null;
+}
+
+/** "about 15 min", "more than 1 hour", or null when the agency gave no ETA. */
+export function etaText(minutes: number | null): string | null {
+  if (minutes == null) return null;
+  if (minutes > 60) return 'more than 1 hour';
+  if (minutes === 60) return 'about 1 hour';
+  return `about ${minutes} min`;
 }

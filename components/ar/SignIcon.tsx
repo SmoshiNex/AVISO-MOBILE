@@ -11,7 +11,7 @@ const YELLOW = '#FACC15';
 const BLACK = '#111827';
 const WHITE = '#FFFFFF';
 
-/** Regulatory sign: white disc with a red ring (speed limit, no turn, no parking). */
+/** Regulatory sign: white disc with a red ring (speed limit, no turn, no parking, fire hydrant). */
 function RingSign({ children }: { children?: React.ReactNode }) {
   return (
     <G>
@@ -87,6 +87,17 @@ export function SignIcon({ detection, size = 56 }: SignIconProps) {
           <RingSign>
             <SvgText x={50} y={66} fontSize={44} fontWeight="bold" fill={BLACK} textAnchor="middle">P</SvgText>
             <Line x1={20} y1={20} x2={80} y2={80} stroke={RED} strokeWidth={8} />
+          </RingSign>
+        );
+      case 'fire_hydrant':
+        // No-parking style ring around a red hydrant (cap, body, side outlets, base).
+        return (
+          <RingSign>
+            <Rect x={40} y={24} width={20} height={8} rx={4} fill={RED} />
+            <Rect x={38} y={32} width={24} height={36} rx={3} fill={RED} />
+            <Rect x={28} y={42} width={10} height={10} rx={2} fill={RED} />
+            <Rect x={62} y={42} width={10} height={10} rx={2} fill={RED} />
+            <Rect x={33} y={68} width={34} height={8} rx={2} fill={BLACK} />
           </RingSign>
         );
       case 'children_crossing':

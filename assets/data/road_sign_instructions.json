@@ -4,6 +4,11 @@
     "popup": "Children crossing",
     "voice": "Children crossing."
   },
+  "fire_hydrant": {
+    "name": "Fire Hydrant",
+    "popup": "Fire hydrant – no parking",
+    "voice": "Fire hydrant. No parking."
+  },
   "no_left_turn": {
     "name": "No Left Turn",
     "popup": "No left turn",

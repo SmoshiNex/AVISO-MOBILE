@@ -4,7 +4,7 @@ import { estimateDistance } from './distance-estimator';
 
 /**
  * Converts a raw YOLO class index and bounding box into a DetectionResult,
- * using the model's 12-class order (MODEL_CLASSES). The model detects the
+ * using the model's 13-class order (MODEL_CLASSES). The model detects the
  * traffic-light colour and each traffic sign as its own class, so no extra
  * colour analysis is needed.
  */

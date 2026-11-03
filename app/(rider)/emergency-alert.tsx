@@ -12,6 +12,7 @@ import { useIot } from '@/contexts/iot-context';
 import { generateJarvisAudio } from '@/lib/openai-tts';
 import { SOS_TEXT, SOS_CACHE_KEY } from '@/constants/sos';
 import { styles } from '@/styles/emergency-alert.style';
+import { SosStatusCard } from '@/components/sos/SosStatusCard';
 import type { SosTriggerType } from '@/types';
 
 const COUNTDOWN_SECONDS = 15;
@@ -189,10 +190,11 @@ export default function EmergencyAlertScreen() {
           <View style={styles.sentIcon}>
             <Ionicons name="checkmark-circle" size={72} color="#fff" />
           </View>
-          <Text style={styles.sentTitle}>Help is on the way</Text>
+          <Text style={styles.sentTitle}>SOS sent</Text>
           <Text style={styles.sentSubtitle}>
             Your emergency contacts have been notified via SMS with your location.
           </Text>
+          <SosStatusCard sentAt={lastSosSentAt ?? Date.now()} />
           <TouchableOpacity style={styles.closeBtn} onPress={() => router.back()}>
             <Text style={styles.closeBtnText}>Close</Text>
           </TouchableOpacity>

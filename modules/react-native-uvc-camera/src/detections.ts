@@ -22,7 +22,7 @@ export type DetectionInfo = {
   /** Camera frame size the detector received */
   frameWidth: number;
   frameHeight: number;
-  /** Bundled model export, e.g. "v6-960x544-fp32" */
+  /** Bundled model export, e.g. "v7-960x544-fp16" */
   modelVersion: string;
 };
 
