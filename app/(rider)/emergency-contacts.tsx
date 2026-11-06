@@ -20,6 +20,7 @@ import {
   deleteContact,
 } from '@/lib/local-db';
 import { api } from '@/lib/api-client';
+import { LIMITS, sanitizeContactName, sanitizeRelationship } from '@/lib/sanitize';
 import type { LocalEmergencyContact } from '@/types';
 import { styles } from '@/styles/emergency-contacts.style';
 
@@ -128,7 +129,7 @@ export default function EmergencyContactsScreen() {
 
   const selectPhoneContact = (contact: Contacts.Contact) => {
     const raw = contact.phoneNumbers?.[0]?.number ?? '';
-    setAddForm({ name: contact.name ?? '', relationship: '' });
+    setAddForm({ name: sanitizeContactName(contact.name ?? '').trim(), relationship: '' });
     setPhoneDigits(extractLocalDigits(raw));
     setContactSearch('');
     setShowContactPicker(false);
@@ -309,7 +310,8 @@ export default function EmergencyContactsScreen() {
                 <TextInput
                   style={[styles.input, { backgroundColor: backgroundElement, color: text, borderColor: border }]}
                   value={addForm.name}
-                  onChangeText={(v) => setAddForm((f) => ({ ...f, name: v }))}
+                  onChangeText={(v) => setAddForm((f) => ({ ...f, name: sanitizeContactName(v) }))}
+                  maxLength={LIMITS.name}
                   placeholder="e.g. Maria Santos"
                   placeholderTextColor={textSecondary}
                 />
@@ -320,7 +322,8 @@ export default function EmergencyContactsScreen() {
                 <TextInput
                   style={[styles.input, { backgroundColor: backgroundElement, color: text, borderColor: border }]}
                   value={addForm.relationship}
-                  onChangeText={(v) => setAddForm((f) => ({ ...f, relationship: v }))}
+                  onChangeText={(v) => setAddForm((f) => ({ ...f, relationship: sanitizeRelationship(v) }))}
+                  maxLength={LIMITS.relationship}
                   placeholder="e.g. Mother, Spouse, Friend"
                   placeholderTextColor={textSecondary}
                 />
@@ -388,6 +391,7 @@ export default function EmergencyContactsScreen() {
               style={[styles.pickerSearch, { backgroundColor: backgroundElement, color: text, borderColor: border }]}
               value={contactSearch}
               onChangeText={setContactSearch}
+              maxLength={LIMITS.search}
               placeholder="Search by name or number..."
               placeholderTextColor={textSecondary}
               autoFocus

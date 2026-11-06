@@ -17,6 +17,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as SecureStore from 'expo-secure-store';
 import { api } from '@/lib/api-client';
+import { LIMITS } from '@/lib/sanitize';
 import { clearRiderData } from '@/lib/local-db';
 import { pullFromBackend } from '@/lib/sync-service';
 import { useThemeColor } from '@/hooks/use-theme-color';
@@ -97,6 +98,7 @@ export default function LoginScreen() {
                 <TextInput
                   style={[styles.input, { backgroundColor: backgroundElem, color: text }]}
                   value={email}
+                  maxLength={LIMITS.login}
                   onChangeText={setEmail}
                   placeholder="Email or username"
                   placeholderTextColor={placeholder}
@@ -115,6 +117,7 @@ export default function LoginScreen() {
                   <TextInput
                     style={[styles.input, { backgroundColor: backgroundElem, color: text }, password.length > 0 && styles.inputWithEye]}
                     value={password}
+                    maxLength={LIMITS.password}
                     onChangeText={setPassword}
                     placeholder="Your password"
                     placeholderTextColor={placeholder}

@@ -14,6 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { api } from '@/lib/api-client';
+import { LIMITS, passwordChecks } from '@/lib/sanitize';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 
@@ -36,11 +37,7 @@ export default function ForgotPasswordResetScreen() {
   const [showConfirm, setShowConfirm] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  const passwordRules = [
-    { label: 'At least 8 characters', met: password.length >= 8 },
-    { label: 'At least one uppercase letter', met: /[A-Z]/.test(password) },
-    { label: 'At least one lowercase letter', met: /[a-z]/.test(password) },
-  ] as { label: string; met: boolean }[];
+  const passwordRules = passwordChecks(password);
 
   const passwordValid = passwordRules.every((r) => r.met);
 
@@ -92,6 +89,7 @@ export default function ForgotPasswordResetScreen() {
                   <TextInput
                     style={[styles.input, { backgroundColor: backgroundElem, color: text }, password.length > 0 && styles.inputWithEye]}
                     value={password}
+                    maxLength={LIMITS.password}
                     onChangeText={setPassword}
                     placeholder="At least 8 characters"
                     placeholderTextColor={placeholder}
@@ -139,6 +137,7 @@ export default function ForgotPasswordResetScreen() {
                   <TextInput
                     style={[styles.input, { backgroundColor: backgroundElem, color: text }, passwordConfirmation.length > 0 && styles.inputWithEye]}
                     value={passwordConfirmation}
+                    maxLength={LIMITS.password}
                     onChangeText={setPasswordConfirmation}
                     placeholder="Repeat your password"
                     placeholderTextColor={placeholder}

@@ -1,5 +1,6 @@
 import { create } from "axios";
 import * as SecureStore from "expo-secure-store";
+import { ACCOUNT_DEACTIVATED, handleAccountDeactivated } from "@/lib/account-deactivated";
 
 const rawBaseUrl = (process.env.EXPO_PUBLIC_API_URL ?? "")
     .trim()
@@ -56,6 +57,16 @@ client.interceptors.response.use(
         const message =
             err.response?.data?.message ??
             `Request failed with status ${err.response?.status}`;
+
+        // Deactivated by an admin while logged in: sign out (not on the login
+        // screen itself, which has no token and shows the message by itself).
+        if (
+            err.response?.status === 403 &&
+            err.response?.data?.code === ACCOUNT_DEACTIVATED &&
+            err.config?.headers?.Authorization
+        ) {
+            void handleAccountDeactivated(message);
+        }
         throw Object.assign(new Error(message), {
             status: err.response?.status,
             errors: err.response?.data?.errors,

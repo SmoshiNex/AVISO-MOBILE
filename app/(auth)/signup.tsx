@@ -21,6 +21,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { api } from '@/lib/api-client';
+import { LIMITS, isStrongPassword, passwordChecks, sanitizeName } from '@/lib/sanitize';
 import { useAddressCascade } from '@/hooks/use-address-cascade';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { useColorScheme } from '@/hooks/use-color-scheme';
@@ -93,6 +94,10 @@ export default function SignupScreen() {
       Toast.show({ type: 'error', text1: 'Invalid Number', text2: 'Must be 10 digits starting with 9 (e.g. 9171234567).' });
       return;
     }
+    if (!isStrongPassword(password)) {
+      Toast.show({ type: 'error', text1: 'Weak Password', text2: 'Use 8 or more characters with an uppercase and a lowercase letter.' });
+      return;
+    }
     if (password !== passwordConfirmation) {
       Toast.show({ type: 'error', text1: 'Password Mismatch', text2: 'Passwords do not match.' });
       return;
@@ -104,7 +109,7 @@ export default function SignupScreen() {
         middle_name: middleName.trim() || undefined,
         last_name:   lastName.trim(),
         username:    username.trim(),
-        email:       email.trim(),
+        email:       email.trim().toLowerCase(),
         contact_number: '+63' + contactDigits.trim(),
         password,
         password_confirmation: passwordConfirmation,
@@ -114,7 +119,7 @@ export default function SignupScreen() {
         region_id:   ZAMBOANGA_REGION_ID,
         street:      streetInput.trim(),
       });
-      router.push({ pathname: '/(auth)/verify-otp', params: { email: email.trim() } });
+      router.push({ pathname: '/(auth)/verify-otp', params: { email: email.trim().toLowerCase() } });
     } catch (err: any) {
       Toast.show({ type: 'error', text1: 'Registration Failed', text2: err?.message ?? 'Could not create account. Please try again.' });
     } finally {
@@ -145,7 +150,8 @@ export default function SignupScreen() {
                   <TextInput
                     style={[styles.input, { backgroundColor: backgroundElem, color: text }]}
                     value={firstName}
-                    onChangeText={setFirstName}
+                    onChangeText={(t) => setFirstName(sanitizeName(t))}
+                    maxLength={LIMITS.name}
                     placeholder="Juan"
                     placeholderTextColor={placeholder}
                     autoCapitalize="words"
@@ -161,7 +167,8 @@ export default function SignupScreen() {
                   <TextInput
                     style={[styles.input, { backgroundColor: backgroundElem, color: text }]}
                     value={lastName}
-                    onChangeText={setLastName}
+                    onChangeText={(t) => setLastName(sanitizeName(t))}
+                    maxLength={LIMITS.name}
                     placeholder="Dela Cruz"
                     placeholderTextColor={placeholder}
                     autoCapitalize="words"
@@ -184,7 +191,8 @@ export default function SignupScreen() {
                 <TextInput
                   style={[styles.input, { backgroundColor: backgroundElem, color: text }]}
                   value={middleName}
-                  onChangeText={setMiddleName}
+                  onChangeText={(t) => setMiddleName(sanitizeName(t))}
+                  maxLength={LIMITS.name}
                   placeholder="e.g. Santos"
                   placeholderTextColor={placeholder}
                   autoCapitalize="words"
@@ -227,6 +235,7 @@ export default function SignupScreen() {
                   style={[styles.input, { backgroundColor: backgroundElem, color: text }]}
                   value={email}
                   onChangeText={setEmail}
+                  maxLength={LIMITS.email}
                   placeholder="rider@example.com"
                   placeholderTextColor={placeholder}
                   keyboardType="email-address"
@@ -272,6 +281,7 @@ export default function SignupScreen() {
                     style={[styles.input, { backgroundColor: backgroundElem, color: text }, password.length > 0 && styles.inputWithEye]}
                     value={password}
                     onChangeText={setPassword}
+                    maxLength={LIMITS.password}
                     placeholder="At least 8 characters"
                     placeholderTextColor={placeholder}
                     secureTextEntry={!showPassword}
@@ -299,11 +309,7 @@ export default function SignupScreen() {
                 </View>
                 {password.length > 0 && (
                   <View style={styles.checker}>
-                    {([
-                      { label: 'At least 8 characters', met: password.length >= 8 },
-                      { label: 'At least one uppercase letter', met: /[A-Z]/.test(password) },
-                      { label: 'At least one lowercase letter', met: /[a-z]/.test(password) },
-                    ] as { label: string; met: boolean }[]).map((rule, i) => (
+                    {passwordChecks(password).map((rule, i) => (
                       <View key={i} style={styles.checkerRow}>
                         <Ionicons
                           name={rule.met ? 'checkmark-circle' : 'ellipse-outline'}
@@ -326,6 +332,7 @@ export default function SignupScreen() {
                     style={[styles.input, { backgroundColor: backgroundElem, color: text }, passwordConfirmation.length > 0 && styles.inputWithEye]}
                     value={passwordConfirmation}
                     onChangeText={setPasswordConfirmation}
+                    maxLength={LIMITS.password}
                     placeholder="Repeat your password"
                     placeholderTextColor={placeholder}
                     secureTextEntry={!showConfirm}
@@ -408,7 +415,7 @@ export default function SignupScreen() {
                   onSubmitEditing={handleSignup}
                   keyboardAppearance={colorScheme}
                   underlineColorAndroid="transparent"
-                  maxLength={255}
+                  maxLength={LIMITS.street}
                 />
               </View>
 

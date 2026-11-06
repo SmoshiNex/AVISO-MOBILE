@@ -13,6 +13,7 @@ import { KeyboardForm } from "@/components/KeyboardForm";
 import { router } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { api } from "@/lib/api-client";
+import { LIMITS } from '@/lib/sanitize';
 import { useThemeColor } from "@/hooks/use-theme-color";
 import { useColorScheme } from "@/hooks/use-color-scheme";
 
@@ -114,6 +115,7 @@ export default function ForgotPasswordScreen() {
                                         error ? { backgroundColor: 'rgba(239, 68, 68, 0.07)', borderWidth: 1.5, borderColor: danger } : null,
                                     ]}
                                     value={email}
+                                    maxLength={LIMITS.email}
                                     onChangeText={handleEmailChange}
                                     placeholder="rider@example.com"
                                     placeholderTextColor={placeholder}

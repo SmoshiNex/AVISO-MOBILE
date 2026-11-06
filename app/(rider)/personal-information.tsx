@@ -14,7 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import Toast from 'react-native-toast-message';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { api } from '@/lib/api-client';
-import { sanitizeText } from '@/lib/sanitize';
+import { LIMITS, sanitizeAlphanumeric, sanitizeName, sanitizePhone, sanitizeText } from '@/lib/sanitize';
 import type { User } from '@/types';
 
 type EditableField = 'first_name' | 'last_name' | 'username' | 'email' | 'contact_number';
@@ -26,6 +26,15 @@ const FIELDS: { key: EditableField; label: string; icon: string; keyboardType?: 
   { key: 'email',          label: 'Email',           icon: 'mail-outline',    keyboardType: 'email-address', autoCapitalize: 'none' },
   { key: 'contact_number', label: 'Contact Number', icon: 'call-outline',    keyboardType: 'phone-pad', autoCapitalize: 'none' },
 ];
+
+/** Longest value and live filter for each field (same limits as the server). */
+const FIELD_INPUT: Record<EditableField, { max: number; clean: (v: string) => string }> = {
+  first_name:     { max: LIMITS.name,     clean: sanitizeName },
+  last_name:      { max: LIMITS.name,     clean: sanitizeName },
+  username:       { max: LIMITS.username, clean: sanitizeAlphanumeric },
+  email:          { max: LIMITS.email,    clean: (v) => v.trimStart() },
+  contact_number: { max: LIMITS.phone,    clean: sanitizePhone },
+};
 
 export default function PersonalInformationScreen() {
   const background        = useThemeColor({}, 'background');
@@ -122,12 +131,12 @@ export default function PersonalInformationScreen() {
                         <TextInput
                           style={{ backgroundColor: backgroundElement, borderRadius: 8, borderWidth: 1, borderColor: border, padding: 10, color: text, fontSize: 15 }}
                           value={fieldInput}
-                          onChangeText={setFieldInput}
+                          onChangeText={(v) => setFieldInput(FIELD_INPUT[field.key].clean(v))}
                           autoFocus
                           autoCapitalize={field.autoCapitalize ?? 'sentences'}
                           autoCorrect={false}
                           keyboardType={field.keyboardType ?? 'default'}
-                          maxLength={field.key === 'email' ? 255 : field.key === 'username' ? 30 : 100}
+                          maxLength={FIELD_INPUT[field.key].max}
                         />
                         <View style={{ flexDirection: 'row', gap: 8 }}>
                           <TouchableOpacity
