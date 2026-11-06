@@ -17,6 +17,7 @@ import { useThemeColor } from '@/hooks/use-theme-color';
 import { useTripContext } from '@/contexts/trip-context';
 import { BarangayBoundaries } from '@/components/BarangayBoundaries';
 import { CoordinateSearch } from '@/components/CoordinateSearch';
+import { HazardReportSheet } from '@/components/HazardReportSheet';
 import { getHazardLogs } from '@/lib/local-db';
 import { api } from '@/lib/api-client';
 import { HAZARD_COLORS } from '@/constants/hazards';
@@ -64,8 +65,20 @@ export default function MapScreen() {
 
   const { trip: activeTrip, isActive, startTrip, endTrip } = useTripContext();
 
-  const [liveHazards, setLiveHazards] = useState<LocalHazardLog[]>([]);
+  const [localHazards, setLocalHazards] = useState<LocalHazardLog[]>([]);
   const [backendHazards, setBackendHazards] = useState<HazardLog[]>([]);
+  const [backendLoaded, setBackendLoaded] = useState(false);
+  // Once the server list has loaded, this phone's uploaded detections come from
+  // it (so a hazard an admin resolved disappears); only not-yet-uploaded ones
+  // are drawn from the phone's own copy.
+  const liveHazards = useMemo(
+    () => (backendLoaded ? localHazards.filter((h) => !h.synced) : localHazards),
+    [backendLoaded, localHazards],
+  );
+  // "Hazard no longer there" report: the hazard being reported, and the ones
+  // reported in this session (until the next server refresh says so too).
+  const [reportTarget, setReportTarget] = useState<HazardLog | null>(null);
+  const [reportedIds, setReportedIds] = useState<ReadonlySet<number>>(() => new Set());
   const [mapTheme, setMapTheme] = useState<"system" | "light" | "dark">("system");
 
   const [showHeatmap, setShowHeatmap] = useState(false);
@@ -113,7 +126,7 @@ export default function MapScreen() {
   const isFeaturePressRef = useRef(false);
 
   useEffect(() => {
-    const load = () => getHazardLogs().then(setLiveHazards);
+    const load = () => getHazardLogs().then(setLocalHazards);
     load();
     const interval = setInterval(load, 5000);
     return () => clearInterval(interval);
@@ -124,6 +137,12 @@ export default function MapScreen() {
       try {
         const data = await api.get<HazardLog[]>('/rider/hazards');
         setBackendHazards(data);
+        setBackendLoaded(true);
+        // A hazard resolved by an admin leaves the list: close its open panel too.
+        const activeIds = new Set(data.map((h) => h.id));
+        setSelectedHazard((current) =>
+          current?.source === 'api' && !activeIds.has(current.data.id) ? null : current,
+        );
       } catch {}
     };
     fetchBackendHazards();
@@ -337,9 +356,36 @@ export default function MapScreen() {
                 <Text style={[styles.hazardDetailText, { color: textSecondary }]}>Distance: {d.distance} m</Text>
               </View>
             )}
+            {selectedHazard.source === 'api' && (
+              selectedHazard.data.reported_by_me || reportedIds.has(selectedHazard.data.id) ? (
+                <View style={[styles.hazardReportedRow, { borderColor: border }]}>
+                  <Ionicons name="hourglass-outline" size={14} color={textSecondary} />
+                  <Text style={[styles.hazardDetailText, { color: textSecondary }]}>
+                    Reported as no longer there – waiting for admin
+                  </Text>
+                </View>
+              ) : (
+                <TouchableOpacity
+                  onPress={() => setReportTarget(selectedHazard.data)}
+                  style={[styles.hazardReportButton, { borderColor: success }]}
+                  accessibilityRole="button"
+                >
+                  <Ionicons name="checkmark-done-outline" size={16} color={success} />
+                  <Text style={[styles.hazardReportButtonText, { color: success }]}>
+                    Report: hazard no longer there
+                  </Text>
+                </TouchableOpacity>
+              )
+            )}
           </View>
         );
       })()}
+
+      <HazardReportSheet
+        hazard={reportTarget ? { id: reportTarget.id, type: reportTarget.type, code: reportTarget.haz_code } : null}
+        onClose={() => setReportTarget(null)}
+        onSent={(id) => setReportedIds((prev) => new Set(prev).add(id))}
+      />
 
       {/* Start/End Ride controls */}
       <SafeAreaView edges={['bottom']} style={styles.rideControls} pointerEvents="box-none">

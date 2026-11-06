@@ -52,20 +52,25 @@ function speakNow(text: string, priority: number, urgent: boolean): void {
  *  - Other alerts speak only when nothing is playing and the last message started at least
  *    VOICE_GAP_MS ago; otherwise only their card shows. This keeps the voice from talking
  *    continuously and two same-tier alerts from cutting each other off.
+ * Returns whether the text is being spoken (false = skipped, only its card shows).
  */
-export function announce(text: string, priority: number, urgent = false): void {
+export function announce(text: string, priority: number, urgent = false): boolean {
   if (urgent) {
     if (!speaking) {
       speakNow(text, priority, true);
-    } else if (!currentUrgent || priority < currentPriority) {
+      return true;
+    }
+    if (!currentUrgent || priority < currentPriority) {
       stopCurrent();
       speakNow(text, priority, true);
+      return true;
     }
-    return;
+    return false;
   }
 
-  if (speaking || Date.now() - lastSpokeAt < VOICE_GAP_MS) return;
+  if (speaking || Date.now() - lastSpokeAt < VOICE_GAP_MS) return false;
   speakNow(text, priority, false);
+  return true;
 }
 
 export function stopAllSpeech(): void {

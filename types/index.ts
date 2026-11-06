@@ -48,8 +48,16 @@ export type HazardLog = {
   longitude: string;
   confidence: string;
   distance?: string;
+  /** GPS accuracy radius (m) and direction of travel (degrees from north) when saved. */
+  gps_accuracy?: string | null;
+  heading?: string | null;
+  rider_code?: string;
   status: string;
   detected_at: string;
+  /** Riders' "hazard no longer there" reports waiting for admin review (/rider/hazards only). */
+  pending_reports_count?: number;
+  /** This rider already sent a "no longer there" report for it (/rider/hazards only). */
+  reported_by_me?: boolean;
 };
 
 export type EmergencyContact = {

@@ -32,6 +32,8 @@ import { AlertGate, type Alert, type HazardSave } from "@/lib/alert-gate";
 import { DISPLAY_MIN_CONFIDENCE, groupName } from "@/constants/detection-tuning";
 import { useArHeading } from "@/hooks/use-ar-heading";
 import { AlertCard } from "@/components/ar/AlertCard";
+import { KnownHazardCard } from "@/components/ar/KnownHazardCard";
+import { useKnownHazardsAhead } from "@/hooks/use-known-hazards-ahead";
 import { CompassArrow } from "@/components/ar/CompassArrow";
 import { SensorHud } from "@/components/SensorHud";
 import { saveHazardLog, incrementTripHazards } from "@/lib/local-db";
@@ -59,6 +61,10 @@ const SOS_HOLD_MS = 1500;
 const FOLLOW_MIN_MS = 2500;
 const FOLLOW_MAX_MS = 8000;
 const FOLLOW_LOST_CLOSE_MS = 700;
+/** After a "Known ... ahead" warning, the camera's own voice for that hazard type stays quiet this long. */
+const KNOWN_HAZARD_VOICE_SKIP_MS = 15000;
+/** The known-hazard card sits below the camera's fixed alert card (76 px tall). */
+const KNOWN_CARD_OFFSET = 86;
 
 type BBox = DetectionResult["bbox"];
 type TrackedAlert = { key: string; follow: readonly string[]; bbox: BBox; lastSeenAt: number; shownAt: number };
@@ -102,6 +108,8 @@ export default function CameraScreen() {
     const insets = useSafeAreaInsets();
     // World-locked arrow direction + rider GPS, live for the whole ride.
     const { angleRef, angle, visibility, positionRef, speedKmhRef, compassRef } = useArHeading(isActive);
+    // Known hazard ahead: saved hazards warned about before the camera can see them.
+    const { warning: knownWarning, lastWarningRef: lastKnownWarningRef } = useKnownHazardsAhead(isActive, positionRef, speedKmhRef);
     const alertTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     const detectionClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
         null,
@@ -248,7 +256,15 @@ export default function CameraScreen() {
                     trackRef.current = null;
                     setActiveAlert(null);
                 }, FOLLOW_MAX_MS);
-                if (alert.voice) announce(alert.voice, alert.priority, alert.urgent);
+                // Right after a "Known ... ahead" warning the rider already heard about this
+                // hazard: the camera still shows its card (and saves it), but stays quiet.
+                const lastKnown = lastKnownWarningRef.current;
+                const justWarned =
+                    alert.kind === "road" &&
+                    lastKnown !== null &&
+                    lastKnown.type === alert.detection.type &&
+                    now - lastKnown.at < KNOWN_HAZARD_VOICE_SKIP_MS;
+                if (alert.voice && !justWarned) announce(alert.voice, alert.priority, alert.urgent);
             } else if (trackRef.current) {
                 const track = trackRef.current;
                 let best: DetectionResult | null = null;
@@ -291,7 +307,7 @@ export default function CameraScreen() {
                 }, 1500);
             }
         },
-        [isActive, positionRef, speedKmhRef, saveHazard],
+        [isActive, positionRef, speedKmhRef, saveHazard, lastKnownWarningRef],
     );
 
     useEffect(() => {
@@ -550,6 +566,14 @@ export default function CameraScreen() {
                 phoneGyro={gyroMag}
                 phoneState={rideState}
             />
+
+            {knownWarning && (
+                <KnownHazardCard
+                    key={knownWarning.id}
+                    ahead={knownWarning.ahead}
+                    top={insets.top + 56 + KNOWN_CARD_OFFSET}
+                />
+            )}
 
             {activeAlert && (
                 <AlertCard
