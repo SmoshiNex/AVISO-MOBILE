@@ -292,3 +292,23 @@ export type LocalRideEvent = {
   detected_at: string;
   attempts: number;
 };
+
+/** Rider Notifications screen categories (filter chips). */
+export type RiderNotificationCategory = 'my_sos' | 'my_reports' | 'my_hazards' | 'account';
+
+/** App screen a notification opens (server RiderNotifications::SCREEN_*), or null for none. */
+export type RiderNotificationScreen = 'crash-logs' | 'map' | 'hazard-logs' | 'profile' | 'emergency-contacts';
+
+/** One item on the rider Notifications screen (server NotificationService::toPayload). */
+export interface RiderNotification {
+  id: string;
+  category: RiderNotificationCategory;
+  /** What it is about, e.g. "sos:12"; items with the same key stack together. */
+  context_key: string | null;
+  event: string | null;
+  title: string;
+  body: string;
+  link: RiderNotificationScreen | null;
+  read_at: string | null;
+  created_at: string;
+}

@@ -12,12 +12,15 @@ import { router, useFocusEffect } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import { Ionicons } from '@expo/vector-icons';
 import { useThemeColor } from '@/hooks/use-theme-color';
+import { useUnreadNotifications } from '@/hooks/use-unread-notifications';
+import { NOTIFICATIONS_SCREEN } from '@/lib/notifications';
 import { getDashboardStats, getContactCount } from '@/lib/local-db';
 import { pullFromBackend } from '@/lib/sync-service';
 import { Colors } from '@/constants/theme';
 import { HAZARD_COLORS } from '@/constants/hazards';
 import type { LocalTrip, LocalHazardLog } from '@/types';
 import { styles } from '@/styles/home.style';
+import { styles as bellStyles } from '@/styles/notifications.style';
 
 type DashboardData = {
   riderName: string;
@@ -43,6 +46,7 @@ export default function HomeScreen() {
   const card = useThemeColor({}, 'card');
 
   const [data, setData] = useState<DashboardData | null>(null);
+  const unreadNotifications = useUnreadNotifications();
   const [refreshing, setRefreshing] = useState(false);
 
   const loadData = useCallback(async () => {
@@ -125,6 +129,20 @@ export default function HomeScreen() {
             </Text>
             <Text style={[styles.date, { color: text }]}>{formatDate()}</Text>
           </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <TouchableOpacity
+            style={bellStyles.bell}
+            onPress={() => router.push(NOTIFICATIONS_SCREEN)}
+            accessibilityRole="button"
+            accessibilityLabel={unreadNotifications > 0 ? `Notifications, ${unreadNotifications} unread` : 'Notifications'}
+          >
+            <Ionicons name={unreadNotifications > 0 ? 'notifications' : 'notifications-outline'} size={24} color={text} />
+            {unreadNotifications > 0 && (
+              <View style={bellStyles.bellBadge}>
+                <Text style={bellStyles.bellBadgeText}>{unreadNotifications > 99 ? '99+' : unreadNotifications}</Text>
+              </View>
+            )}
+          </TouchableOpacity>
           {data?.avatarUrl ? (
             <Image
               source={{ uri: data.avatarUrl }}
@@ -138,6 +156,7 @@ export default function HomeScreen() {
               </Text>
             </View>
           )}
+          </View>
         </View>
 
         {/* Safety Status Card */}

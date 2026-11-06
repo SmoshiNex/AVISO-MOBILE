@@ -536,7 +536,7 @@ export default function SignupScreen() {
             <Text style={[styles.termsContentText, { color: textSecondary }]}>
               • <Text style={{ fontFamily: 'JetBrainsMono_600SemiBold' }}>GPS Data:</Text> Aviso requires access to your device's location services (GPS) while the app is running or tracking a ride.
               {'\n\n'}• <Text style={{ fontFamily: 'JetBrainsMono_600SemiBold' }}>During a Ride:</Text> While a ride is active, Aviso sends your location to our server. It is used to record your ride route (shown in your trip history) and to place detected hazards accurately.
-              {'\n\n'}• <Text style={{ fontFamily: 'JetBrainsMono_600SemiBold' }}>Emergency (SOS):</Text> Administrators can see your live position on the map only when you send an SOS, so help can reach you.
+              {'\n\n'}• <Text style={{ fontFamily: 'JetBrainsMono_600SemiBold' }}>Emergency (SOS):</Text> Administrators can see your live position on the map only when you send an SOS, so help can reach you. Your emergency contacts receive a text message when the SOS is sent, and text updates when help is dispatched, when responders arrive, and when the emergency is resolved.
               {'\n\n'}• <Text style={{ fontFamily: 'JetBrainsMono_600SemiBold' }}>Privacy Guarantee:</Text> Your location is not shared with third parties or used for advertising.
             </Text>
 
