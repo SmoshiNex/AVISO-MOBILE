@@ -336,6 +336,17 @@ export default function MapScreen() {
                 {new Date(d.detected_at).toLocaleString('en-PH', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
               </Text>
             </View>
+            {selectedHazard.source === 'api' && selectedHazard.data.times_seen != null && (
+              <View style={styles.hazardDetailRow}>
+                <Ionicons name="eye-outline" size={13} color={textSecondary} />
+                <Text style={[styles.hazardDetailText, { color: textSecondary }]}>
+                  Seen {selectedHazard.data.times_seen === 1 ? '1 time' : `${selectedHazard.data.times_seen} times`}
+                  {selectedHazard.data.last_seen_at
+                    ? ` · last ${new Date(selectedHazard.data.last_seen_at).toLocaleString('en-PH', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`
+                    : ''}
+                </Text>
+              </View>
+            )}
             {d.area ? (
               <View style={styles.hazardDetailRow}>
                 <Ionicons name="location-outline" size={13} color={textSecondary} />

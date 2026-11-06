@@ -527,15 +527,17 @@ export default function SignupScreen() {
           <ScrollView style={styles.termsScroll} contentContainerStyle={{ paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
             <Text style={[styles.termsContentTitle, { color: text }]}>Data Collection and Usage</Text>
             <Text style={[styles.termsContentText, { color: textSecondary }]}>
-              Aviso is designed to map and log road hazards in real-time. To make this possible, our application collects specific data from your edge device while you ride:
-              {'\n\n'}• <Text style={{ fontFamily: 'JetBrainsMono_600SemiBold' }}>Camera Data:</Text> Our system processes real-time video feeds from your device to detect road hazards (such as potholes, road excavations, barriers, traffic lights, and traffic signs).
-              {'\n\n'}• <Text style={{ fontFamily: 'JetBrainsMono_600SemiBold' }}>Hazard Logs:</Text> When a hazard is detected, the system records the hazard type, timestamp, and a confidence score. This data is synced to our secure cloud servers to update the global Admin Hazard Logs.
+              Aviso is designed to map and log road hazards in real-time. To make this possible, our application collects specific data from your device while you ride:
+              {'\n\n'}• <Text style={{ fontFamily: 'JetBrainsMono_600SemiBold' }}>Camera Data:</Text> The camera video is processed on your phone only, to detect road hazards (potholes, road excavations and road barriers) and to warn you about traffic lights and signs. The video itself is never uploaded or stored.
+              {'\n\n'}• <Text style={{ fontFamily: 'JetBrainsMono_600SemiBold' }}>Hazard Logs:</Text> When a road hazard is detected, the app sends its type, the time, a confidence score, the estimated distance from the camera, your GPS position and your direction of travel to our secure cloud server. The server uses these to place the hazard on the map, to count how many times it was seen, and to update the Admin Hazard Logs.
             </Text>
 
             <Text style={[styles.termsContentTitle, { color: text }]}>Location Tracking</Text>
             <Text style={[styles.termsContentText, { color: textSecondary }]}>
-              • <Text style={{ fontFamily: 'JetBrainsMono_600SemiBold' }}>GPS Data:</Text> To accurately map detected hazards, Aviso requires continuous access to your device's location services (GPS) while the app is actively running or tracking a ride.
-              {'\n\n'}• <Text style={{ fontFamily: 'JetBrainsMono_600SemiBold' }}>Privacy Guarantee:</Text> Your location data is strictly tied to detected road hazards. We do not use your location data to track your personal whereabouts for commercial purposes or share it with third-party advertisers.
+              • <Text style={{ fontFamily: 'JetBrainsMono_600SemiBold' }}>GPS Data:</Text> Aviso requires access to your device's location services (GPS) while the app is running or tracking a ride.
+              {'\n\n'}• <Text style={{ fontFamily: 'JetBrainsMono_600SemiBold' }}>During a Ride:</Text> While a ride is active, Aviso sends your location to our server. It is used to record your ride route (shown in your trip history) and to place detected hazards accurately.
+              {'\n\n'}• <Text style={{ fontFamily: 'JetBrainsMono_600SemiBold' }}>Emergency (SOS):</Text> Administrators can see your live position on the map only when you send an SOS, so help can reach you.
+              {'\n\n'}• <Text style={{ fontFamily: 'JetBrainsMono_600SemiBold' }}>Privacy Guarantee:</Text> Your location is not shared with third parties or used for advertising.
             </Text>
 
             <Text style={[styles.termsContentTitle, { color: text }]}>User Accounts and Security</Text>

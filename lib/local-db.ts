@@ -103,6 +103,8 @@ async function migrate(handle: SQLite.SQLiteDatabase): Promise<void> {
     // Hazard to Hazard Distance, as calculated by the server.
     `ALTER TABLE hazard_logs ADD COLUMN nearest_hazard_code TEXT`,
     `ALTER TABLE hazard_logs ADD COLUMN nearest_hazard_distance REAL`,
+    // Times Seen, as counted by the server.
+    `ALTER TABLE hazard_logs ADD COLUMN times_seen INTEGER`,
   ];
 
   for (const sql of additions) {
@@ -341,9 +343,9 @@ export async function countUnsyncedRiderData(): Promise<{ trips: number; detecti
 export async function saveHazardLog(log: Omit<LocalHazardLog, 'id'>): Promise<number> {
   const result = await getDb().runAsync(
     `INSERT INTO hazard_logs (remote_id, trip_id, type, confidence, distance,
-      gps_accuracy, heading, nearest_hazard_code, nearest_hazard_distance,
+      gps_accuracy, heading, nearest_hazard_code, nearest_hazard_distance, times_seen,
       latitude, longitude, area, detected_at, synced)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       log.remote_id ?? null,
       log.trip_id ?? null,
@@ -354,6 +356,7 @@ export async function saveHazardLog(log: Omit<LocalHazardLog, 'id'>): Promise<nu
       log.heading ?? null,
       log.nearest_hazard_code ?? null,
       log.nearest_hazard_distance ?? null,
+      log.times_seen ?? null,
       log.latitude,
       log.longitude,
       log.area ?? null,
@@ -406,6 +409,7 @@ export type ServerHazardInfo = {
   area?: string;
   nearest_hazard_code?: string | null;
   nearest_hazard_distance?: number | null;
+  times_seen?: number | null;
 };
 
 export async function markHazardLogSynced(
@@ -415,9 +419,9 @@ export async function markHazardLogSynced(
 ): Promise<void> {
   await getDb().runAsync(
     `UPDATE hazard_logs SET synced = 1, remote_id = ?, area = COALESCE(?, area),
-       nearest_hazard_code = ?, nearest_hazard_distance = ?
+       nearest_hazard_code = ?, nearest_hazard_distance = ?, times_seen = ?
      WHERE id = ?`,
-    [remoteId, info.area ?? null, info.nearest_hazard_code ?? null, info.nearest_hazard_distance ?? null, localId],
+    [remoteId, info.area ?? null, info.nearest_hazard_code ?? null, info.nearest_hazard_distance ?? null, info.times_seen ?? null, localId],
   );
 }
 
@@ -430,9 +434,9 @@ export async function reconcileHazardLogSynced(
   // SUBSTR to 19 chars strips ms/µs differences:
   // local → "2026-06-22T05:18:00.123Z", backend → "2026-06-22T05:18:00.000000Z"
   const result = await getDb().runAsync(
-    `UPDATE hazard_logs SET synced = 1, remote_id = ?, nearest_hazard_code = ?, nearest_hazard_distance = ?
+    `UPDATE hazard_logs SET synced = 1, remote_id = ?, nearest_hazard_code = ?, nearest_hazard_distance = ?, times_seen = ?
      WHERE synced = 0 AND type = ? AND SUBSTR(detected_at, 1, 19) = SUBSTR(?, 1, 19)`,
-    [remoteId, info.nearest_hazard_code ?? null, info.nearest_hazard_distance ?? null, type, detectedAt],
+    [remoteId, info.nearest_hazard_code ?? null, info.nearest_hazard_distance ?? null, info.times_seen ?? null, type, detectedAt],
   );
   return result.changes > 0;
 }
@@ -613,6 +617,7 @@ function rowToHazardLog(r: Record<string, unknown>): LocalHazardLog {
     heading: (r.heading as number | null) ?? undefined,
     nearest_hazard_code: (r.nearest_hazard_code as string | null) ?? undefined,
     nearest_hazard_distance: (r.nearest_hazard_distance as number | null) ?? undefined,
+    times_seen: (r.times_seen as number | null) ?? undefined,
     latitude: r.latitude as number,
     longitude: r.longitude as number,
     area: r.area as string | undefined,

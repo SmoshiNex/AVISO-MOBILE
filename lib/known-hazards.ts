@@ -120,7 +120,8 @@ export function groupKnownHazards(logs: HazardLog[]): KnownHazard[] {
     const latitude = toNumber(log.latitude);
     const longitude = toNumber(log.longitude);
     if (latitude === null || longitude === null) continue;
-    const heading = toNumber(log.heading);
+    // The server's placement direction also covers older saves without a GPS heading.
+    const heading = toNumber(log.travel_heading ?? log.heading);
     const radius = GROUP_RADIUS_M[log.type] ?? 10;
 
     const match = groups.find(

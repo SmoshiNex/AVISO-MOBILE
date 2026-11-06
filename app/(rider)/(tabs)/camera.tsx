@@ -176,6 +176,7 @@ export default function CameraScreen() {
                 // Hazard to Hazard Distance, worked out by the server across all riders.
                 let nearestCode: string | undefined;
                 let nearestDistance: number | undefined;
+                let timesSeen: number | undefined;
 
                 if (isOnline) {
                     try {
@@ -196,6 +197,7 @@ export default function CameraScreen() {
                         area = response?.data?.area ?? undefined;
                         nearestCode = response?.data?.nearest_hazard_code ?? undefined;
                         nearestDistance = response?.data?.nearest_hazard_distance ?? undefined;
+                        timesSeen = response?.data?.times_seen ?? undefined;
                         synced = !!remoteId;
                     } catch {
                         // Backend unreachable — save to offline queue, batch sync retries
@@ -212,6 +214,7 @@ export default function CameraScreen() {
                     heading,
                     nearest_hazard_code: nearestCode,
                     nearest_hazard_distance: nearestDistance,
+                    times_seen: timesSeen,
                     latitude,
                     longitude,
                     area,

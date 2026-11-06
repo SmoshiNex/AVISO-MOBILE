@@ -201,6 +201,11 @@ export default function HazardLogsScreen() {
               {hazardToHazardLabel(item)}
             </Text>
           )}
+          {item.times_seen !== undefined && (
+            <Text style={[styles.rowArea, { color: textSecondary }]} numberOfLines={1}>
+              {timesSeenLabel(item.times_seen)}
+            </Text>
+          )}
           <View style={styles.rowTrip}>
             <Ionicons name="bicycle-outline" size={12} color={item.trip_id && tripInfo[item.trip_id] ? primary : textSecondary} />
             <Text
@@ -369,6 +374,17 @@ export default function HazardLogsScreen() {
                   textColor={text}
                   labelColor={textSecondary}
                 />
+                <DetailRow
+                  icon="eye-outline"
+                  label="Times Seen"
+                  value={
+                    selected.times_seen !== undefined
+                      ? timesSeenLabel(selected.times_seen)
+                      : selected.synced ? '—' : 'Counted after sync'
+                  }
+                  textColor={text}
+                  labelColor={textSecondary}
+                />
                 {(selected.area || !selected.synced) && (
                   <DetailRow
                     icon="map-outline"
@@ -428,6 +444,11 @@ const DISTANCE_WORD_SHORT = { near: 'Near', ahead: 'Ahead', far: 'Far' } as cons
 /** Camera distance is an estimate from the box size, so it carries the Near/Ahead/Far word. */
 function cameraDistanceLabel(meters: number): string {
   return `~${meters} m · ${DISTANCE_WORD_SHORT[distanceWord(meters)]}`;
+}
+
+/** How many times (rides) this hazard was seen on the road, counted by the server. */
+function timesSeenLabel(times: number): string {
+  return times === 1 ? 'Seen 1 time' : `Seen ${times} times`;
 }
 
 /** Nearest other hazard of the same type (from the server), e.g. "18 m → POT-20261011-0003". */

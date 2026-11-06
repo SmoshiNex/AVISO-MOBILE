@@ -58,6 +58,16 @@ export type HazardLog = {
   pending_reports_count?: number;
   /** This rider already sent a "no longer there" report for it (/rider/hazards only). */
   reported_by_me?: boolean;
+  /**
+   * Direction of travel the server used to place the hazard (GPS heading, or
+   * worked out from the ride route for older saves).
+   */
+  travel_heading?: string | null;
+  /** /rider/hazards: how many times (rides) this hazard was seen, and when last. */
+  times_seen?: number;
+  last_seen_at?: string | null;
+  /** /rider/hazards: ids of every save of this hazard (the pin is their average). */
+  member_ids?: number[];
 };
 
 export type EmergencyContact = {
@@ -120,6 +130,8 @@ export type LocalHazardLog = {
   /** Hazard to Hazard Distance from the server: nearest other active hazard of the same type. */
   nearest_hazard_code?: string;
   nearest_hazard_distance?: number;
+  /** Times Seen from the server: how many times (rides) this hazard was seen on the road. */
+  times_seen?: number;
   latitude: number;
   longitude: number;
   area?: string;

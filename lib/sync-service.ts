@@ -202,7 +202,7 @@ async function syncHazardLogs(): Promise<number> {
 
       const remoteId = (response as any)?.data?.id;
       if (remoteId) {
-        // Store the barangay and Hazard to Hazard Distance the server worked out.
+        // Store the barangay, Hazard to Hazard Distance and Times Seen the server worked out.
         await markHazardLogSynced(log.id, remoteId, (response as any)?.data ?? {});
         count++;
       }
@@ -340,6 +340,7 @@ export async function pullFromBackend(force = false): Promise<void> {
       const nearest = {
         nearest_hazard_code: log.nearest_hazard_code ?? null,
         nearest_hazard_distance: log.nearest_hazard_distance != null ? Number(log.nearest_hazard_distance) : null,
+        times_seen: log.times_seen != null ? Number(log.times_seen) : null,
       };
       const reconciled = await reconcileHazardLogSynced(log.detected_at, log.type, log.id, nearest);
       if (!reconciled) {
@@ -355,6 +356,7 @@ export async function pullFromBackend(force = false): Promise<void> {
           heading:     log.heading != null ? parseFloat(String(log.heading)) : undefined,
           nearest_hazard_code: nearest.nearest_hazard_code ?? undefined,
           nearest_hazard_distance: nearest.nearest_hazard_distance ?? undefined,
+          times_seen:  nearest.times_seen ?? undefined,
           latitude:    parseFloat(String(log.latitude)),
           longitude:   parseFloat(String(log.longitude)),
           area:        log.area,
