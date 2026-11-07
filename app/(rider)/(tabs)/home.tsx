@@ -133,13 +133,21 @@ export default function HomeScreen() {
       >
         {/* Header */}
         <View style={styles.header}>
-          <View>
-            <Text style={[styles.greeting, { color: textSecondary }]}>
+          {/* Takes the space left by the bell and photo; long text shrinks or cuts off. */}
+          <View style={styles.headerText}>
+            <Text style={[styles.greeting, { color: textSecondary }]} numberOfLines={1}>
               {greeting()}, {data?.riderName ?? '—'}
             </Text>
-            <Text style={[styles.date, { color: text }]}>{formatDate()}</Text>
+            <Text
+              style={[styles.date, { color: text }]}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.75}
+            >
+              {formatDate()}
+            </Text>
           </View>
-          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <View style={styles.headerActions}>
           <TouchableOpacity
             style={bellStyles.bell}
             onPress={() => router.push(NOTIFICATIONS_SCREEN)}

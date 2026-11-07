@@ -9,7 +9,10 @@ export const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: Spacing.lg,
+    gap: Spacing.sm,
   },
+  headerText: { flex: 1, minWidth: 0 },
+  headerActions: { flexDirection: 'row', alignItems: 'center', flexShrink: 0 },
   greeting: { fontSize: 14, fontFamily: Fonts.regular, marginBottom: 2 },
   date: { fontSize: 22, fontFamily: Fonts.bold },
   avatarCircle: {
