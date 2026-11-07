@@ -18,7 +18,9 @@ import { getDashboardStats, getContactCount } from '@/lib/local-db';
 import { pullFromBackend } from '@/lib/sync-service';
 import { Colors } from '@/constants/theme';
 import { HAZARD_COLORS } from '@/constants/hazards';
-import type { LocalTrip, LocalHazardLog } from '@/types';
+import { CityOverviewCard } from '@/components/CityOverviewCard';
+import { fetchCityOverview, getCachedCityOverview } from '@/lib/city-overview';
+import type { CityOverview, LocalTrip, LocalHazardLog } from '@/types';
 import { styles } from '@/styles/home.style';
 import { styles as bellStyles } from '@/styles/notifications.style';
 
@@ -48,6 +50,11 @@ export default function HomeScreen() {
   const [data, setData] = useState<DashboardData | null>(null);
   const unreadNotifications = useUnreadNotifications();
   const [refreshing, setRefreshing] = useState(false);
+  const [cityOverview, setCityOverview] = useState<CityOverview | null>(getCachedCityOverview);
+
+  const loadCityOverview = useCallback(async () => {
+    setCityOverview(await fetchCityOverview());
+  }, []);
 
   const loadData = useCallback(async () => {
     const [userJson, stats, contactCount] = await Promise.all([
@@ -74,15 +81,18 @@ export default function HomeScreen() {
   useFocusEffect(
     useCallback(() => {
       pullFromBackend().catch(() => {}).finally(() => loadData());
-    }, [loadData]),
+      void loadCityOverview();
+    }, [loadData, loadCityOverview]),
   );
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await pullFromBackend(true).catch(() => {});
-    await loadData();
+    await Promise.all([
+      pullFromBackend(true).catch(() => {}).then(loadData),
+      loadCityOverview(),
+    ]);
     setRefreshing(false);
-  }, [loadData]);
+  }, [loadData, loadCityOverview]);
 
   const greeting = (): string => {
     const hour = new Date().getHours();
@@ -274,6 +284,9 @@ export default function HomeScreen() {
             </Text>
           </View>
         )}
+
+        {/* City-wide numbers, same as the admin dashboard */}
+        <CityOverviewCard overview={cityOverview} />
 
         {/* Bottom padding for floating tab bar */}
         <View style={{ height: 100 }} />

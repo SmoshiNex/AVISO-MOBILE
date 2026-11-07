@@ -299,6 +299,22 @@ export type RiderNotificationCategory = 'my_sos' | 'my_reports' | 'my_hazards' |
 /** App screen a notification opens (server RiderNotifications::SCREEN_*), or null for none. */
 export type RiderNotificationScreen = 'crash-logs' | 'map' | 'hazard-logs' | 'profile' | 'emergency-contacts';
 
+/** One barangay in the city overview (server DashboardService::getTopHazardBarangays). */
+export interface BarangayHazardCount {
+  area: string;
+  potholes: number;
+  roadBarriers: number;
+  roadExcavation: number;
+  total: number;
+}
+
+/** City-wide numbers on the home screen (GET /rider/dashboard). */
+export interface CityOverview {
+  active_hazards: number;
+  today_detections: number;
+  top_barangays: BarangayHazardCount[];
+}
+
 /** One item on the rider Notifications screen (server NotificationService::toPayload). */
 export interface RiderNotification {
   id: string;
