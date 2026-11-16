@@ -69,6 +69,7 @@ export type SignKey =
   | 'children_crossing'
   | 'fire_hydrant'
   | 'no_left_turn'
+  | 'no_right_turn'
   | 'no_parking'
   | 'other'
   | 'slow_down'
@@ -76,13 +77,14 @@ export type SignKey =
 
 // YOLOv8 class index → display name (as the model prints it) + app type.
 // MUST match the `names:` order in the model's data.yaml
-// (model v7, Roboflow v1-local-and-online-datasets-12-classess v6 — 13 classes).
+// (model v8, Roboflow v1-local-and-online-datasets-12-classess v7 — 14 classes).
 // A fire hydrant is handled like a No Parking sign: vehicles must keep it clear for emergencies.
 export const MODEL_CLASSES: readonly { name: string; type: string; signKey?: SignKey }[] = [
   { name: 'Children Crossing', type: 'Traffic Sign', signKey: 'children_crossing' },
   { name: 'Fire Hydrant', type: 'Traffic Sign', signKey: 'fire_hydrant' },
   { name: 'No Left Turn', type: 'Traffic Sign', signKey: 'no_left_turn' },
   { name: 'No Parking', type: 'Traffic Sign', signKey: 'no_parking' },
+  { name: 'No Right Turn', type: 'Traffic Sign', signKey: 'no_right_turn' },
   { name: 'Other Traffic Sign', type: 'Traffic Sign', signKey: 'other' },
   { name: 'Pothole', type: 'Pothole' },
   { name: 'Road Barrier', type: 'Road Barrier' },

@@ -460,7 +460,7 @@ class YoloDetector private constructor(context: Context) {
         private const val TAG = "YoloDetector"
         private const val MODEL_ASSET = "aviso-yolov8.tflite"
         /** Which exported model is bundled in assets; shown on the camera screen. Update when the file changes. */
-        const val MODEL_VERSION = "v7-960x544-fp32"
+        const val MODEL_VERSION = "v8-960x544-fp32"
         /**
          * Weakest detection passed to the app. Weak but steady objects still count as evidence for
          * "possible" warnings; boxes are only drawn from [DRAW_THRESHOLD].

@@ -82,6 +82,15 @@ export function SignIcon({ detection, size = 56 }: SignIconProps) {
             <Line x1={20} y1={20} x2={80} y2={80} stroke={RED} strokeWidth={8} />
           </RingSign>
         );
+      case 'no_right_turn':
+        // Mirror of No Left Turn: the arrow bends to the right.
+        return (
+          <RingSign>
+            <Path d="M38 74 L38 46 Q38 36 48 36 L62 36" stroke={BLACK} strokeWidth={8} fill="none" />
+            <Polygon points="74,36 60,25 60,47" fill={BLACK} />
+            <Line x1={20} y1={20} x2={80} y2={80} stroke={RED} strokeWidth={8} />
+          </RingSign>
+        );
       case 'no_parking':
         return (
           <RingSign>

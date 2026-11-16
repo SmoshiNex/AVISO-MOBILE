@@ -22,6 +22,7 @@ export const VOICE_ALERT_PRIORITY: Record<string, number> = {
   'sign:speed_limit_20':     3,
   'sign:slow_down':          3,
   'sign:no_left_turn':       4,
+  'sign:no_right_turn':      4,
   'Traffic Light Green':     5,
   'sign:no_parking':         5,
   'sign:fire_hydrant':       5,
