@@ -34,6 +34,7 @@ import { useArHeading } from "@/hooks/use-ar-heading";
 import { AlertCard } from "@/components/ar/AlertCard";
 import { KnownHazardCard } from "@/components/ar/KnownHazardCard";
 import { useKnownHazardsAhead } from "@/hooks/use-known-hazards-ahead";
+import { useHazardPredictionAhead } from "@/hooks/use-hazard-prediction-ahead";
 import { CompassArrow } from "@/components/ar/CompassArrow";
 import { SensorHud } from "@/components/SensorHud";
 import { saveHazardLog, incrementTripHazards } from "@/lib/local-db";
@@ -109,7 +110,19 @@ export default function CameraScreen() {
     // World-locked arrow direction + rider GPS, live for the whole ride.
     const { angleRef, angle, visibility, positionRef, speedKmhRef, compassRef } = useArHeading(isActive);
     // Known hazard ahead: saved hazards warned about before the camera can see them.
-    const { warning: knownWarning, lastWarningRef: lastKnownWarningRef } = useKnownHazardsAhead(isActive, positionRef, speedKmhRef);
+    const {
+        warning: knownWarning,
+        lastWarningRef: lastKnownWarningRef,
+        hazardsRef: knownHazardsRef,
+    } = useKnownHazardsAhead(isActive, positionRef, speedKmhRef);
+    // Possible hazard ahead: high-risk spots of the team's risk map (prediction).
+    const possibleWarning = useHazardPredictionAhead(
+        isActive,
+        positionRef,
+        speedKmhRef,
+        knownHazardsRef,
+        lastKnownWarningRef,
+    );
     const alertTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     const detectionClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
         null,
@@ -575,6 +588,15 @@ export default function CameraScreen() {
                     key={knownWarning.id}
                     ahead={knownWarning.ahead}
                     top={insets.top + 56 + KNOWN_CARD_OFFSET}
+                />
+            )}
+
+            {possibleWarning && !knownWarning && (
+                <KnownHazardCard
+                    key={possibleWarning.id}
+                    ahead={possibleWarning.ahead}
+                    top={insets.top + 56 + KNOWN_CARD_OFFSET}
+                    variant="possible"
                 />
             )}
 

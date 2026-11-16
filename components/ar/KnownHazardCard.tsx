@@ -8,15 +8,25 @@ type KnownHazardCardProps = {
   ahead: HazardAhead;
   /** Distance of the card's top edge from the top of the screen. */
   top: number;
+  /** "known": a saved hazard (hazard color). "possible": a high-risk spot of the risk map (orange). */
+  variant?: 'known' | 'possible';
 };
+
+/** Orange: a likely hazard, not a confirmed one. */
+const POSSIBLE_COLOR = '#F59E0B';
 
 /**
  * "Known pothole ahead – about 40 m": a hazard other riders already saved,
  * shown before the camera can see it. Fixed (not tied to the video), because
  * the hazard is usually still too far away to be in view.
+ * With variant "possible": "Possible hazard ahead", a high-risk spot of the risk map.
  */
-export function KnownHazardCard({ ahead, top }: KnownHazardCardProps) {
-  const color = HAZARD_COLORS[ahead.hazard.type] ?? '#EF4444';
+export function KnownHazardCard({ ahead, top, variant = 'known' }: KnownHazardCardProps) {
+  const possible = variant === 'possible';
+  const color = possible ? POSSIBLE_COLOR : (HAZARD_COLORS[ahead.hazard.type] ?? '#EF4444');
+  const title = possible ? 'Possible hazard ahead' : knownHazardTitle(ahead);
+  const meters = roundedDistance(ahead.distance);
+  const source = possible ? 'high-risk area' : 'saved by riders';
 
   return (
     <Animated.View
@@ -25,15 +35,15 @@ export function KnownHazardCard({ ahead, top }: KnownHazardCardProps) {
       exiting={FadeOut.duration(300)}
       style={[styles.card, { top, borderColor: color, shadowColor: color }]}
       accessibilityRole="alert"
-      accessibilityLabel={`${knownHazardTitle(ahead)}, about ${roundedDistance(ahead.distance)} meters`}
+      accessibilityLabel={`${title}, about ${meters} meters`}
     >
       <View style={[styles.icon, { backgroundColor: color }]}>
-        <Ionicons name="warning" size={26} color="#FFFFFF" />
+        <Ionicons name={possible ? 'alert-circle' : 'warning'} size={26} color="#FFFFFF" />
       </View>
       <View style={styles.textBlock}>
-        <Text style={styles.title} numberOfLines={1}>{knownHazardTitle(ahead)}</Text>
+        <Text style={styles.title} numberOfLines={1}>{title}</Text>
         <Text style={styles.subtitle} numberOfLines={1}>
-          About {roundedDistance(ahead.distance)} m · saved by riders
+          About {meters} m · {source}
         </Text>
       </View>
     </Animated.View>

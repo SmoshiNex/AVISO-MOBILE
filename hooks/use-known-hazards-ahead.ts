@@ -62,7 +62,12 @@ export function useKnownHazardsAhead(
   active: boolean,
   positionRef: React.MutableRefObject<LatLng | null>,
   speedKmhRef: React.MutableRefObject<number | null>,
-): { warning: KnownHazardWarning | null; lastWarningRef: React.MutableRefObject<LastKnownWarning> } {
+): {
+  warning: KnownHazardWarning | null;
+  lastWarningRef: React.MutableRefObject<LastKnownWarning>;
+  /** The saved hazards (grouped), so "Possible hazard ahead" can stay quiet near them. */
+  hazardsRef: React.MutableRefObject<KnownHazard[]>;
+} {
   const [warning, setWarning] = useState<KnownHazardWarning | null>(null);
   const hazardsRef = useRef<KnownHazard[]>([]);
   const lastWarningRef = useRef<LastKnownWarning>(null);
@@ -127,5 +132,5 @@ export function useKnownHazardsAhead(
     };
   }, [active, positionRef, speedKmhRef]);
 
-  return { warning, lastWarningRef };
+  return { warning, lastWarningRef, hazardsRef };
 }
