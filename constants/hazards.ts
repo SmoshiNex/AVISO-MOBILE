@@ -21,7 +21,7 @@ export function isRoadHazard(type: string): boolean {
 export const HAZARD_COLORS: Record<string, string> = {
   'Pothole': '#EF4444',
   'Road Excavation': '#F97316',
-  'Road Barrier': '#8B5CF6',
+  'Road Barrier': '#EAB308',
   'Traffic Sign': '#3B82F6',
   'Traffic Light Red': '#EF4444',
   'Traffic Light Yellow': '#F59E0B',

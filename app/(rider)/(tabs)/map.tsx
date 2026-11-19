@@ -18,6 +18,8 @@ import { useTripContext } from '@/contexts/trip-context';
 import { BarangayBoundaries } from '@/components/BarangayBoundaries';
 import { CoordinateSearch } from '@/components/CoordinateSearch';
 import { HazardReportSheet } from '@/components/HazardReportSheet';
+import { RiskAreas } from '@/components/RiskAreas';
+import { bundledRiskMapVersion } from '@/lib/hazard-prediction';
 import { getHazardLogs } from '@/lib/local-db';
 import { api } from '@/lib/api-client';
 import { HAZARD_COLORS } from '@/constants/hazards';
@@ -82,6 +84,18 @@ export default function MapScreen() {
   const [mapTheme, setMapTheme] = useState<"system" | "light" | "dark">("system");
 
   const [showHeatmap, setShowHeatmap] = useState(false);
+  const [showRiskAreas, setShowRiskAreas] = useState(false);
+  const toggleRiskAreas = useCallback(() => {
+    if (!showRiskAreas) {
+      const version = bundledRiskMapVersion();
+      Toast.show({
+        type: 'info',
+        text1: 'Risk areas on',
+        text2: `Purple squares: places where hazards are likely (team risk map${version ? `, ${version}` : ''}).`,
+      });
+    }
+    setShowRiskAreas(!showRiskAreas);
+  }, [showRiskAreas]);
   const [showBarangays, setShowBarangays] = useState(true);
   const [showSearch, setShowSearch] = useState(false);
   const openSearch = useCallback(() => setShowSearch(true), []);
@@ -223,9 +237,11 @@ export default function MapScreen() {
           onLocated={resumeFollowing}
         />
         <MapHeatmap data={heatmapData} visible={showHeatmap} />
-        <MapFeatureToggles 
-          showHeatmap={showHeatmap} 
-          setShowHeatmap={setShowHeatmap} 
+        <MapFeatureToggles
+          showHeatmap={showHeatmap}
+          setShowHeatmap={setShowHeatmap}
+          showRiskAreas={showRiskAreas}
+          onRiskAreasPress={toggleRiskAreas}
           showBarangays={showBarangays}
           setShowBarangays={setShowBarangays}
           onSearchPress={openSearch}
@@ -249,6 +265,7 @@ export default function MapScreen() {
         )}
 
         <BarangayBoundaries visible={showBarangays} hazards={backendHazards} />
+        <RiskAreas visible={showRiskAreas} />
         <CoordinateSearch open={showSearch} onClose={closeSearch} top={insets.top + 8} />
 
         {/* Render markers natively for 60fps performance */}
@@ -480,7 +497,7 @@ function LocateButton({ bottom, hidden, onLocated }: { bottom: number; hidden: b
   return null;
 }
 
-function MapFeatureToggles({ showHeatmap, setShowHeatmap, showBarangays, setShowBarangays, onSearchPress, mapTheme, setMapTheme, insets }: any) {
+function MapFeatureToggles({ showHeatmap, setShowHeatmap, showRiskAreas, onRiskAreasPress, showBarangays,setShowBarangays, onSearchPress, mapTheme, setMapTheme, insets }: any) {
   const { cameraRef, isLoaded, registerOverlay, unregisterOverlay, theme: currentTheme } = useMap();
   const [is3D, setIs3D] = useState(false);
   const [isRotating, setIsRotating] = useState(false);
@@ -542,6 +559,13 @@ function MapFeatureToggles({ showHeatmap, setShowHeatmap, showBarangays, setShow
         <Ionicons name="flame-outline" size={20} color={showHeatmap ? "#fff" : "#444"} />
       </TouchableOpacity>
       <TouchableOpacity
+        style={[styles.featureBtn, showRiskAreas && styles.featureBtnActive]}
+        onPress={onRiskAreasPress}
+        accessibilityLabel="Toggle risk areas"
+      >
+        <Ionicons name="warning-outline" size={20} color={showRiskAreas ? "#fff" : "#444"} />
+      </TouchableOpacity>
+      <TouchableOpacity
         style={[styles.featureBtn, showBarangays && styles.featureBtnActive]}
         onPress={() => setShowBarangays(!showBarangays)}
         accessibilityLabel="Toggle barangay boundaries"
@@ -563,7 +587,7 @@ function MapFeatureToggles({ showHeatmap, setShowHeatmap, showBarangays, setShow
         </TouchableOpacity>
       )}
     </View>
-  ), [insets.top, showHeatmap, showBarangays, is3D, isRotating, setShowHeatmap, setShowBarangays, onSearchPress, toggle3D, toggleRotation]);
+  ), [insets.top, showHeatmap, showRiskAreas, onRiskAreasPress, showBarangays, mapTheme, setMapTheme, is3D, isRotating, setShowHeatmap, setShowBarangays, onSearchPress, toggle3D, toggleRotation]);
 
   useEffect(() => {
     if (isLoaded) {

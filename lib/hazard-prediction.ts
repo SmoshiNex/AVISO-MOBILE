@@ -20,7 +20,7 @@ export const KNOWN_HAZARD_NEARBY_M = 20;
 export const SAME_SPOT_M = 120;
 
 type RiskCell = { lat: number; lon: number; risk: number };
-type PredictionModel = { version?: string; flag_top_pct?: number; cells?: RiskCell[] };
+type PredictionModel = { version?: string; flag_top_pct?: number; cell_m?: number; cells?: RiskCell[] };
 
 /** Squares get KnownHazard shape so the known-hazard "ahead" rules can be reused. Key = negative index. */
 export type RiskZone = KnownHazard;
@@ -75,4 +75,52 @@ export function withoutWarnedSpots(zones: RiskZone[], warned: { latitude: number
 /** e.g. "Possible hazard ahead, about 50 meters." */
 export function possibleHazardVoice(distance: number): string {
   return `Possible hazard ahead, about ${roundedDistance(distance)} meters.`;
+}
+
+type RiskSquareFeature = {
+  type: 'Feature';
+  properties: Record<string, never>;
+  geometry: { type: 'Polygon'; coordinates: number[][][] };
+};
+export type RiskSquares = { type: 'FeatureCollection'; features: RiskSquareFeature[] };
+
+const METERS_PER_DEGREE_LAT = 111_320;
+
+/**
+ * The high-risk squares as map polygons (the "Risk areas" layer on the Map tab).
+ * Same squares that trigger "Possible hazard ahead", drawn at the file's cell size.
+ */
+export function riskSquaresGeoJson(zones: RiskZone[], cellMeters: number): RiskSquares {
+  const half = cellMeters / 2;
+  return {
+    type: 'FeatureCollection',
+    features: zones.map((z) => {
+      const dLat = half / METERS_PER_DEGREE_LAT;
+      const dLon = half / (METERS_PER_DEGREE_LAT * Math.cos((z.latitude * Math.PI) / 180));
+      const [s, n, w, e] = [z.latitude - dLat, z.latitude + dLat, z.longitude - dLon, z.longitude + dLon];
+      return {
+        type: 'Feature',
+        properties: {},
+        geometry: { type: 'Polygon', coordinates: [[[w, s], [e, s], [e, n], [w, n], [w, s]]] },
+      };
+    }),
+  };
+}
+
+let cachedSquares: RiskSquares | null = null;
+
+/** The bundled model's high-risk squares as polygons, built once. */
+export function bundledRiskSquares(): RiskSquares {
+  if (cachedSquares === null) {
+    const model = predictionFile as PredictionModel;
+    const cellMeters = typeof model.cell_m === 'number' && model.cell_m > 0 ? model.cell_m : 25;
+    cachedSquares = riskSquaresGeoJson(bundledRiskZones(), cellMeters);
+  }
+  return cachedSquares;
+}
+
+/** The bundled model's date (e.g. "2026-11-19"), shown with the Risk areas layer. */
+export function bundledRiskMapVersion(): string | null {
+  const version = (predictionFile as PredictionModel).version;
+  return typeof version === 'string' ? version : null;
 }

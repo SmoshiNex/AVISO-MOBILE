@@ -8,12 +8,12 @@ type KnownHazardCardProps = {
   ahead: HazardAhead;
   /** Distance of the card's top edge from the top of the screen. */
   top: number;
-  /** "known": a saved hazard (hazard color). "possible": a high-risk spot of the risk map (orange). */
+  /** "known": a saved hazard (hazard color). "possible": a high-risk spot of the risk map (purple). */
   variant?: 'known' | 'possible';
 };
 
-/** Orange: a likely hazard, not a confirmed one. */
-const POSSIBLE_COLOR = '#F59E0B';
+/** Purple: a likely hazard (predicted risk), not a detected one; same as the Risk areas squares. */
+const POSSIBLE_COLOR = '#8B5CF6';
 
 /**
  * "Known pothole ahead – about 40 m": a hazard other riders already saved,
