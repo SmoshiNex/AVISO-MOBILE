@@ -2,8 +2,8 @@ import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 import { api } from '@/lib/api-client';
 
-/** The server accepts photos up to 2 MB. */
-export const MAX_PHOTO_BYTES = 2 * 1024 * 1024;
+/** The server accepts photos up to 10 MB (phone cameras can take very large photos). */
+export const MAX_PHOTO_BYTES = 10 * 1024 * 1024;
 export const MAX_NOTE_LENGTH = 200;
 
 export type HazardReportPhoto = { uri: string; fileSize?: number };

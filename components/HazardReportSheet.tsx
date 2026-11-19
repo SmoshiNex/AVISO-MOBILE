@@ -41,14 +41,21 @@ export function HazardReportSheet({ hazard, onClose, onSent }: HazardReportSheet
   const primary = useThemeColor({}, 'primary');
   const border = useThemeColor({}, 'border');
 
+  const success = useThemeColor({}, 'success');
+  const danger = useThemeColor({}, 'danger');
+
   const [photo, setPhoto] = useState<HazardReportPhoto | null>(null);
   const [note, setNote] = useState('');
-  const [sending, setSending] = useState(false);
+  // idle → sending → sent, or sending → failed (photo and note kept for "Try again").
+  const [status, setStatus] = useState<'idle' | 'sending' | 'sent' | 'failed'>('idle');
+  const [errorText, setErrorText] = useState('');
+  const sending = status === 'sending';
 
   const reset = () => {
     setPhoto(null);
     setNote('');
-    setSending(false);
+    setStatus('idle');
+    setErrorText('');
   };
 
   const close = () => {
@@ -62,7 +69,7 @@ export function HazardReportSheet({ hazard, onClose, onSent }: HazardReportSheet
       const taken = await takeHazardReportPhoto();
       if (!taken) return;
       if (taken.fileSize != null && taken.fileSize > MAX_PHOTO_BYTES) {
-        Toast.show({ type: 'error', text1: 'Photo too large', text2: 'Please take the photo again (2 MB maximum).' });
+        Toast.show({ type: 'error', text1: 'Photo too large', text2: 'Please take the photo again (10 MB maximum).' });
         return;
       }
       setPhoto(taken);
@@ -77,22 +84,40 @@ export function HazardReportSheet({ hazard, onClose, onSent }: HazardReportSheet
 
   const send = async () => {
     if (!hazard || !photo || sending) return;
-    setSending(true);
+    setStatus('sending');
+    setErrorText('');
     try {
       await submitHazardReport(hazard.id, photo, note);
-      Toast.show({ type: 'success', text1: 'Report sent', text2: 'An admin will check your photo. Thank you!' });
+      setStatus('sent');
       onSent(hazard.id);
-      reset();
-      onClose();
     } catch (err) {
-      setSending(false);
-      Toast.show({
-        type: 'error',
-        text1: 'Report not sent',
-        text2: err instanceof Error ? err.message : 'Please try again.',
-      });
+      setErrorText(err instanceof Error ? err.message : 'Please check your connection and try again.');
+      setStatus('failed');
     }
   };
+
+  if (status === 'sent') {
+    return (
+      <Modal visible={hazard !== null} transparent animationType="slide" onRequestClose={close}>
+        <View style={styles.backdrop}>
+          <View style={[styles.sheet, styles.doneSheet, { backgroundColor: card, borderColor: border }]}>
+            <Ionicons name="checkmark-circle" size={64} color={success} />
+            <Text style={[styles.title, { color: text }]}>Report sent!</Text>
+            <Text style={[styles.subtitle, styles.centered, { color: textSecondary }]}>
+              Your photo was delivered to the admin. The pin stays on the map until an admin confirms it.
+            </Text>
+            <TouchableOpacity
+              onPress={close}
+              style={[styles.sendButton, styles.fullWidth, { backgroundColor: primary }]}
+              accessibilityRole="button"
+            >
+              <Text style={styles.sendText}>Done</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+    );
+  }
 
   return (
     <Modal visible={hazard !== null} transparent animationType="slide" onRequestClose={close}>
@@ -138,6 +163,18 @@ export function HazardReportSheet({ hazard, onClose, onSent }: HazardReportSheet
             style={[styles.note, { color: text, borderColor: border }]}
           />
 
+          {sending && (
+            <Text style={[styles.statusText, { color: textSecondary }]}>
+              Uploading your photo to the admin… keep the app open.
+            </Text>
+          )}
+          {status === 'failed' && (
+            <View style={[styles.errorBox, { borderColor: danger }]}>
+              <Ionicons name="alert-circle" size={18} color={danger} />
+              <Text style={[styles.errorText, { color: danger }]}>Not sent. {errorText}</Text>
+            </View>
+          )}
+
           <TouchableOpacity
             onPress={send}
             disabled={!photo || sending}
@@ -145,9 +182,12 @@ export function HazardReportSheet({ hazard, onClose, onSent }: HazardReportSheet
             accessibilityRole="button"
           >
             {sending ? (
-              <ActivityIndicator color="#FFFFFF" />
+              <View style={styles.sendingRow}>
+                <ActivityIndicator color="#FFFFFF" />
+                <Text style={styles.sendText}>Sending to admin…</Text>
+              </View>
             ) : (
-              <Text style={styles.sendText}>Send report</Text>
+              <Text style={styles.sendText}>{status === 'failed' ? 'Try again' : 'Send report'}</Text>
             )}
           </TouchableOpacity>
         </View>
@@ -223,5 +263,35 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '700',
+  },
+  sendingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  statusText: {
+    fontSize: 13,
+    textAlign: 'center',
+  },
+  errorBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 10,
+  },
+  errorText: {
+    flex: 1,
+    fontSize: 13,
+  },
+  doneSheet: {
+    alignItems: 'center',
+  },
+  centered: {
+    textAlign: 'center',
+  },
+  fullWidth: {
+    alignSelf: 'stretch',
   },
 });
