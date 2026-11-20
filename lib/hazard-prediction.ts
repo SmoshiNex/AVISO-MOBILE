@@ -1,4 +1,5 @@
 import predictionFile from '@/assets/data/aviso_prediction.json';
+import roadCellsFile from '@/assets/data/aviso_risk_road_cells.json';
 import { distanceMeters, roundedDistance, type KnownHazard } from '@/lib/known-hazards';
 
 /**
@@ -109,12 +110,33 @@ export function riskSquaresGeoJson(zones: RiskZone[], cellMeters: number): RiskS
 
 let cachedSquares: RiskSquares | null = null;
 
-/** The bundled model's high-risk squares as polygons, built once. */
+type RoadCellsFile = { model_version?: string; cells?: unknown[] };
+
+const cellKey = (lat: number, lon: number) => `${lat.toFixed(6)},${lon.toFixed(6)}`;
+
+/**
+ * Keeps only the squares on the road (assets/data/aviso_risk_road_cells.json: squares
+ * a recorded ride path or a saved hazard passes through). The risk map's spread into
+ * buildings and water is not drawn; no rider can be there and those squares never warn.
+ * If the list was built for another risk-map version, every square is kept.
+ */
+export function onRoadZones(zones: RiskZone[], roadFile: RoadCellsFile, modelVersion: string | undefined): RiskZone[] {
+  if (!Array.isArray(roadFile.cells) || roadFile.model_version !== modelVersion) return zones;
+  const road = new Set(
+    roadFile.cells
+      .filter((c): c is [number, number] => Array.isArray(c) && typeof c[0] === 'number' && typeof c[1] === 'number')
+      .map(([lat, lon]) => cellKey(lat, lon)),
+  );
+  return zones.filter((z) => road.has(cellKey(z.latitude, z.longitude)));
+}
+
+/** The bundled model's high-risk squares on the road, as polygons, built once. */
 export function bundledRiskSquares(): RiskSquares {
   if (cachedSquares === null) {
     const model = predictionFile as PredictionModel;
     const cellMeters = typeof model.cell_m === 'number' && model.cell_m > 0 ? model.cell_m : 25;
-    cachedSquares = riskSquaresGeoJson(bundledRiskZones(), cellMeters);
+    const zones = onRoadZones(bundledRiskZones(), roadCellsFile as RoadCellsFile, model.version);
+    cachedSquares = riskSquaresGeoJson(zones, cellMeters);
   }
   return cachedSquares;
 }

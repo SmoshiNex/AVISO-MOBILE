@@ -18,7 +18,7 @@ import { useTripContext } from '@/contexts/trip-context';
 import { BarangayBoundaries } from '@/components/BarangayBoundaries';
 import { CoordinateSearch } from '@/components/CoordinateSearch';
 import { HazardReportSheet } from '@/components/HazardReportSheet';
-import { RiskAreas } from '@/components/RiskAreas';
+import { RiskAreas, RiskAreasLegend } from '@/components/RiskAreas';
 import { bundledRiskMapVersion } from '@/lib/hazard-prediction';
 import { getHazardLogs } from '@/lib/local-db';
 import { api } from '@/lib/api-client';
@@ -91,7 +91,7 @@ export default function MapScreen() {
       Toast.show({
         type: 'info',
         text1: 'Risk areas on',
-        text2: `Purple squares: places where hazards are likely (team risk map${version ? `, ${version}` : ''}).`,
+        text2: `Purple road: possible hazard area, based on past hazard records${version ? ` (risk map ${version})` : ''}.`,
       });
     }
     setShowRiskAreas(!showRiskAreas);
@@ -301,6 +301,10 @@ export default function MapScreen() {
           />
         </Mapbox.ShapeSource>
       </Map>
+
+      {showRiskAreas && selectedHazard === null && (
+        <RiskAreasLegend bottom={insets.bottom + 158} />
+      )}
 
       {/* Per-type hazard stat cards */}
       {/* The coordinate search takes this spot while it's open. */}
